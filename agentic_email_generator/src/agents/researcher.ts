@@ -84,10 +84,19 @@ async function searchPerplexityNews(
       }
     );
 
-    // Parse the response to extract articles
-    const articles = JSON.parse(response.data.choices[0].message.content);
+    // Get the raw response content
+    const rawContent = response.data.choices[0].message.content;
 
-    // Validate and transform the response
+    // Extract JSON from the response text
+    const jsonMatch = rawContent.match(/\[.*\]/s);
+    if (!jsonMatch) {
+      throw new Error('No JSON array found in response');
+    }
+
+    // Parse the JSON array
+    const articles = JSON.parse(jsonMatch[0]);
+
+    // Validate the response
     if (!Array.isArray(articles)) {
       throw new Error('Invalid API response format');
     }
