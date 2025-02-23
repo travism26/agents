@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentic-email-writer
+  labels:
+    name: agentic-email-writer
+    environment: production
+    monitoring: enabled
+
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: agentic-email-writer-quota
+  namespace: agentic-email-writer
+spec:
+  hard:
+    # CPU and Memory Quotas
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    
+    # Storage Quotas
+    requests.storage: 20Gi
+    
+    # Pod Count Quotas
+    pods: "20"
+    
+    # Other Resource Quotas
+    configmaps: "20"
+    secrets: "20"
+    services: "10"
+    persistentvolumeclaims: "10"
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: agentic-email-writer
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-communication
+  namespace: agentic-email-writer
+spec:
+  podSelector:
+    matchLabels:
+      app: agentic-email-writer
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: agentic-email-writer
+    ports:
+    - protocol: TCP
+      port: 3000  # API port
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mongodb
+    ports:
+    - protocol: TCP
+      port: 27017
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090  # Prometheus

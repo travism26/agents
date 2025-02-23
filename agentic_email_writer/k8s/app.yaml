@@ -1,0 +1,171 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentic-email-writer
+  namespace: agentic-email-writer
+  labels:
+    app: agentic-email-writer
+spec:
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  selector:
+    app: agentic-email-writer
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentic-email-writer
+  namespace: agentic-email-writer
+  labels:
+    app: agentic-email-writer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agentic-email-writer
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: agentic-email-writer
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      containers:
+      - name: agentic-email-writer
+        image: agentic-email-writer:latest  # Update with actual image repository
+        ports:
+        - containerPort: 3000
+          name: http
+        - containerPort: 9090
+          name: metrics
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        # MongoDB Configuration
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: app-secret
+              key: mongodb-uri
+        # Redis Configuration
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: password
+        # API Keys and External Services
+        - name: PERPLEXITY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secret
+              key: perplexity-api-key
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secret
+              key: openai-api-key
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - agentic-email-writer
+              topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+  namespace: agentic-email-writer
+type: Opaque
+data:
+  mongodb-uri: bW9uZ29kYjovL2FkbWluOnBhc3N3b3JkQG1vbmdvZGI6MjcwMTcvYWdlbnRpYy1lbWFpbC13cml0ZXI=  # Change in production!
+  perplexity-api-key: eW91ci1wZXJwbGV4aXR5LWFwaS1rZXk=  # Change in production!
+  openai-api-key: eW91ci1vcGVuYWktYXBpLWtleQ==  # Change in production!
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: agentic-email-writer
+  namespace: agentic-email-writer
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: agentic-email-writer
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agentic-email-writer-pdb
+  namespace: agentic-email-writer
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: agentic-email-writer
