@@ -1,19 +1,58 @@
-import { Contact, NewsArticle, Angle } from '../src/models/models';
-import { ReviewerAgent, EmailContext } from '../src/agents/reviewer';
+import {
+  User,
+  Contact,
+  Company,
+  NewsArticle,
+  Angle,
+} from '../src/models/models';
+import {
+  ReviewerAgent,
+  EmailContext,
+  ReviewResult,
+} from '../src/agents/reviewer';
+import { ContextManager } from '../src/models/context';
 import { ChatOpenAI } from '@langchain/openai';
+
+// Test helper class to access protected members
+class TestableReviewerAgent extends ReviewerAgent {
+  getContext() {
+    return this.getSharedContext();
+  }
+
+  setPhase(phase: 'review' | 'revision') {
+    this.updatePhase(phase);
+  }
+}
 
 // Mock ChatOpenAI
 jest.mock('@langchain/openai');
 const MockedChatOpenAI = ChatOpenAI as jest.MockedClass<typeof ChatOpenAI>;
 
 describe('Reviewer Agent', () => {
-  let reviewer: ReviewerAgent;
+  let reviewer: TestableReviewerAgent;
+  let contextManager: ContextManager;
+
+  const mockUser: User = {
+    _id: 'user1',
+    name: 'John Doe',
+    title: 'Business Development Manager',
+    company: 'Tech Corp',
+  };
 
   const mockContact: Contact = {
     _id: 'contact1',
     name: 'Jane Smith',
     title: 'VP of Operations',
     company: 'Target Corp',
+  };
+
+  const mockCompany: Company = {
+    _id: 'company1',
+    name: 'Target Corp',
+    details: {
+      industry: 'Retail',
+      description: 'Major retail corporation',
+    },
   };
 
   const mockArticles: NewsArticle[] = [
@@ -93,7 +132,16 @@ Tech Corp`;
         return { content: 'default response' };
       });
 
-    reviewer = new ReviewerAgent();
+    // Create context manager with test data
+    contextManager = new ContextManager(
+      'test-session',
+      mockUser,
+      mockContact,
+      mockCompany
+    );
+
+    // Create reviewer agent with context manager
+    reviewer = new TestableReviewerAgent(contextManager);
   });
 
   describe('review', () => {
@@ -229,6 +277,8 @@ Tech Corp`;
               contentRelevance: 95,
               structureQuality: 95,
               improvementAreas: [],
+              styleMatch: 'professional',
+              toneMatch: 'direct',
             },
           }),
         }));
@@ -239,6 +289,203 @@ Tech Corp`;
       expect(result.score).toBeGreaterThan(90);
       expect(result.analysis?.toneScore).toBeGreaterThanOrEqual(90);
       expect(result.analysis?.contentRelevance).toBeGreaterThanOrEqual(90);
+    });
+  });
+
+  describe('Review Phases', () => {
+    it('should track review phases', async () => {
+      const phases: string[] = [];
+
+      // Mock to capture phase transitions
+      MockedChatOpenAI.prototype.invoke = jest
+        .fn()
+        .mockImplementation(async () => {
+          phases.push(reviewer.getContext().state.phase);
+          return {
+            content: JSON.stringify({
+              score: 85,
+              approved: true,
+              analysis: {
+                toneScore: 85,
+                contentRelevance: 85,
+                improvementAreas: [],
+              },
+            }),
+          };
+        });
+
+      await reviewer.review(mockEmailDraft, mockContext);
+
+      expect(phases).toContain('initial_analysis');
+      expect(phases).toContain('detailed_review');
+      expect(phases).toContain('final_validation');
+    });
+
+    it('should perform improvement generation for low scores', async () => {
+      const phases: string[] = [];
+
+      // Mock low score and improvements
+      MockedChatOpenAI.prototype.invoke = jest
+        .fn()
+        .mockImplementationOnce(async () => ({
+          content: JSON.stringify({
+            score: 70,
+            approved: false,
+            analysis: {
+              toneScore: 70,
+              contentRelevance: 70,
+              improvementAreas: ['tone'],
+            },
+          }),
+        }))
+        .mockImplementationOnce(async () => ({
+          content: JSON.stringify({
+            score: 70,
+            approved: false,
+            analysis: {
+              toneScore: 70,
+              contentRelevance: 70,
+              improvementAreas: ['tone'],
+              improvements: [
+                {
+                  suggestion: 'Improve tone',
+                  impact: 80,
+                  reasoning: 'Current tone is too formal',
+                },
+              ],
+            },
+          }),
+        }))
+        .mockImplementationOnce(async () => ({
+          content: JSON.stringify({
+            improvedContent: 'Improved content',
+            improvements: [
+              {
+                suggestion: 'Improve tone',
+                impact: 80,
+                reasoning: 'Made tone more conversational',
+              },
+            ],
+          }),
+        }));
+
+      reviewer.setPhase('review');
+      const result = await reviewer.review(mockEmailDraft, mockContext);
+
+      expect(result.analysis?.improvements).toBeDefined();
+      expect(result.improvedContent).toBeDefined();
+    });
+  });
+
+  describe('Memory and Learning', () => {
+    it('should maintain contact-specific insights', async () => {
+      // First review - successful
+      MockedChatOpenAI.prototype.invoke = jest
+        .fn()
+        .mockImplementationOnce(async () => ({
+          content: JSON.stringify({
+            score: 95,
+            approved: true,
+            analysis: {
+              toneScore: 95,
+              personalizationScore: 90,
+              contentRelevance: 95,
+              structureQuality: 95,
+              improvementAreas: [],
+              styleMatch: 'professional',
+              toneMatch: 'direct',
+            },
+          }),
+        }));
+
+      await reviewer.review(mockEmailDraft, mockContext);
+
+      const context = reviewer.getContext();
+      expect(context.memory.draftHistory).toHaveLength(1);
+      expect(context.memory.draftHistory[0].feedback?.score).toBe(95);
+    });
+
+    it('should track quality patterns over time', async () => {
+      // Multiple reviews to establish patterns
+      for (let i = 0; i < 3; i++) {
+        await reviewer.review(mockEmailDraft, {
+          ...mockContext,
+          revisionCount: i,
+        });
+      }
+
+      const context = reviewer.getContext();
+      expect(context.memory.draftHistory).toHaveLength(3);
+      expect(context.memory.draftHistory[0].feedback).toBeDefined();
+    });
+
+    it('should adapt review criteria based on learning', async () => {
+      // First review with specific style
+      MockedChatOpenAI.prototype.invoke = jest
+        .fn()
+        .mockImplementationOnce(async () => ({
+          content: JSON.stringify({
+            score: 95,
+            approved: true,
+            analysis: {
+              toneScore: 95,
+              personalizationScore: 90,
+              styleMatch: 'professional',
+              toneMatch: 'direct',
+            },
+          }),
+        }));
+
+      await reviewer.review(mockEmailDraft, mockContext);
+
+      // Second review should consider learned preferences
+      const result = await reviewer.review(mockEmailDraft, mockContext);
+
+      const context = reviewer.getContext();
+      expect(context.state.progress).toBeGreaterThan(0.8);
+    });
+  });
+
+  describe('State Management', () => {
+    it('should maintain review state throughout process', async () => {
+      const states: any[] = [];
+
+      MockedChatOpenAI.prototype.invoke = jest
+        .fn()
+        .mockImplementation(async () => {
+          const context = reviewer.getContext();
+          states.push({
+            phase: context.state.phase,
+            progress: context.state.progress,
+          });
+          return {
+            content: JSON.stringify({
+              score: 85,
+              approved: true,
+              analysis: {
+                toneScore: 85,
+                contentRelevance: 85,
+                improvementAreas: [],
+              },
+            }),
+          };
+        });
+
+      await reviewer.review(mockEmailDraft, mockContext);
+
+      expect(states[0].phase).toBe('review');
+      expect(states[states.length - 1].phase).toBe('review');
+      expect(states[states.length - 1].progress).toBeDefined();
+    });
+
+    it('should track active constraints during review', async () => {
+      const result = await reviewer.review(mockEmailDraft, mockContext, {
+        minLength: 200,
+        maxLength: 400,
+      });
+
+      const context = reviewer.getContext();
+      expect(context.state.phase).toBe('review');
     });
   });
 });

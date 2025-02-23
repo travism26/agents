@@ -1,5 +1,6 @@
 import { Contact, Company, NewsArticle } from '../src/models/models';
 import { ResearcherAgent, ArticleCategory } from '../src/agents/researcher';
+import { ContextManager } from '../src/models/context';
 import axios from 'axios';
 import { ChatOpenAI } from '@langchain/openai';
 
@@ -11,10 +12,34 @@ const MockedChatOpenAI = ChatOpenAI as jest.MockedClass<typeof ChatOpenAI>;
 
 describe('ResearcherAgent', () => {
   let researcher: ResearcherAgent;
+  let contextManager: ContextManager;
+
+  const mockContact: Contact = {
+    _id: '1',
+    name: 'John Doe',
+    title: 'CEO',
+    company: 'Test Corp',
+  };
+
+  const mockCompany: Company = {
+    _id: '1',
+    name: 'Test Corp',
+    details: {
+      industry: 'Technology',
+    },
+  };
 
   beforeEach(() => {
     // Reset all mocks before each test
     jest.clearAllMocks();
+
+    // Create context manager with test data
+    contextManager = new ContextManager(
+      'test-session',
+      mockContact,
+      mockContact,
+      mockCompany
+    );
 
     // Mock ChatOpenAI invoke method
     MockedChatOpenAI.prototype.invoke = jest
@@ -47,8 +72,8 @@ describe('ResearcherAgent', () => {
         return { content: 'default response' };
       });
 
-    // Create researcher agent after mocks are set up
-    researcher = new ResearcherAgent();
+    // Create researcher agent with context manager
+    researcher = new ResearcherAgent(contextManager);
 
     // Mock successful Perplexity API response
     mockedAxios.post.mockResolvedValue({
@@ -78,21 +103,6 @@ describe('ResearcherAgent', () => {
       },
     });
   });
-
-  const mockContact: Contact = {
-    _id: '1',
-    name: 'John Doe',
-    title: 'CEO',
-    company: 'Test Corp',
-  };
-
-  const mockCompany: Company = {
-    _id: '1',
-    name: 'Test Corp',
-    details: {
-      industry: 'Technology',
-    },
-  };
 
   describe('research', () => {
     it('should update agent context with company and contact information', async () => {

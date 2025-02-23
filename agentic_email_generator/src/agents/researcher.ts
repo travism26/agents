@@ -8,6 +8,8 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import { Contact, Company, NewsArticle } from '../models/models';
 import { ChatOpenAI } from '@langchain/openai';
+import { BaseAgent } from './base';
+import { ContextManager, SharedContext } from '../models/context';
 
 // Load environment variables
 dotenv.config();
@@ -109,17 +111,54 @@ async function searchPerplexityNews(
 /**
  * ResearcherAgent class responsible for gathering news articles
  */
-export class ResearcherAgent {
-  private context: {
-    company?: Company;
-    contact?: Contact;
+export class ResearcherAgent extends BaseAgent {
+  private searchContext: {
     searchStrategy?: string;
     lastQueryTime?: Date;
     articleHistory?: NewsArticle[];
   };
 
-  constructor() {
-    this.context = {};
+  constructor(contextManager: ContextManager) {
+    super(contextManager, 'researcher');
+    this.searchContext = {};
+  }
+
+  /**
+   * Gets valid phases for this agent
+   */
+  protected getValidPhases(): SharedContext['state']['phase'][] {
+    return ['research'];
+  }
+
+  /**
+   * Implements fallback strategy for research failures
+   */
+  protected async getFallbackStrategy(): Promise<NewsArticle[]> {
+    const context = this.getSharedContext();
+    const company = context.company;
+
+    // Try a more general search query
+    const generalQuery = `${company.name} company news`;
+    const response = await searchPerplexityNews(generalQuery);
+
+    // Process and filter articles
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const articles: NewsArticle[] = response.articles
+      .filter((article) => new Date(article.publishedAt) >= sixMonthsAgo)
+      .map((article) => ({
+        id: article.id,
+        title: article.title,
+        url: article.url,
+        publishedAt: article.publishedAt,
+        summary: article.summary,
+        source: article.source,
+        companyName: company.name,
+        tags: [ArticleCategory.OTHER],
+      }));
+
+    return this.prioritizeArticles(articles);
   }
 
   /**
@@ -150,13 +189,17 @@ Generate a focused search query that will find relevant news.`;
       { role: 'user', content: prompt },
     ]);
 
-    // Extract content from response
-    const content = response.content.toString();
+    const query = response.content.toString().trim();
 
-    // Update agent's context with search strategy
-    this.context.searchStrategy = content;
+    // Record decision in shared context
+    this.recordDecision(
+      'search_query_generation',
+      'Generated optimized search query based on company and contact analysis',
+      0.85,
+      { query }
+    );
 
-    return content.trim();
+    return query;
   }
 
   /**
@@ -165,14 +208,15 @@ Generate a focused search query that will find relevant news.`;
   private async categorizeArticle(
     article: NewsArticle
   ): Promise<ArticleCategory> {
+    const context = this.getSharedContext();
     const prompt = `Analyze this business news article and determine its primary category.
 
 Title: ${article.title}
 Summary: ${article.summary}
 
 Context:
-- Company: ${this.context.company?.name}
-- Industry: ${this.context.company?.details.industry}
+- Company: ${context.company.name}
+- Industry: ${context.company.details.industry}
 - Previous findings: ${this.summarizeArticleHistory()}
 
 Categorize as one of:
@@ -190,30 +234,41 @@ Explain your categorization reasoning and return the category.`;
     ]);
 
     // Extract category from response
-    const category = response.content.toString().toLowerCase();
+    const content = response.content.toString().toLowerCase();
+    let category: ArticleCategory;
 
-    if (category.includes('partnerships_investments')) {
-      return ArticleCategory.PARTNERSHIPS_INVESTMENTS;
-    } else if (category.includes('developments_innovations')) {
-      return ArticleCategory.DEVELOPMENTS_INNOVATIONS;
-    } else if (category.includes('leadership_strategy')) {
-      return ArticleCategory.LEADERSHIP_STRATEGY;
-    } else if (category.includes('achievements_milestones')) {
-      return ArticleCategory.ACHIEVEMENTS_MILESTONES;
+    if (content.includes('partnerships_investments')) {
+      category = ArticleCategory.PARTNERSHIPS_INVESTMENTS;
+    } else if (content.includes('developments_innovations')) {
+      category = ArticleCategory.DEVELOPMENTS_INNOVATIONS;
+    } else if (content.includes('leadership_strategy')) {
+      category = ArticleCategory.LEADERSHIP_STRATEGY;
+    } else if (content.includes('achievements_milestones')) {
+      category = ArticleCategory.ACHIEVEMENTS_MILESTONES;
     } else {
-      return ArticleCategory.OTHER;
+      category = ArticleCategory.OTHER;
     }
+
+    // Record decision in shared context
+    this.recordDecision(
+      'article_categorization',
+      `Categorized article "${article.title}" as ${category}`,
+      0.8,
+      { articleId: article.id, category }
+    );
+
+    return category;
   }
 
   /**
    * Summarizes the agent's article history for context
    */
   private summarizeArticleHistory(): string {
-    if (!this.context.articleHistory?.length) {
+    if (!this.searchContext.articleHistory?.length) {
       return 'No previous articles analyzed';
     }
 
-    const categoryCounts = this.context.articleHistory.reduce(
+    const categoryCounts = this.searchContext.articleHistory.reduce(
       (acc, article) => {
         const category = article.tags[0];
         acc[category] = (acc[category] || 0) + 1;
@@ -223,7 +278,7 @@ Explain your categorization reasoning and return the category.`;
     );
 
     return `Previously analyzed ${
-      this.context.articleHistory.length
+      this.searchContext.articleHistory.length
     } articles: ${Object.entries(categoryCounts)
       .map(([category, count]) => `${category}: ${count}`)
       .join(', ')}`;
@@ -233,12 +288,57 @@ Explain your categorization reasoning and return the category.`;
    * Performs research by fetching and analyzing news articles
    */
   async research(contact: Contact, company: Company): Promise<NewsArticle[]> {
-    // Update agent's context
-    this.context.company = company;
-    this.context.contact = contact;
-    this.context.lastQueryTime = new Date();
+    // Update phase in shared context
+    this.updatePhase('research', 'initializing', 0);
 
-    return this.fetchNewsArticles(contact, company);
+    // Verify we can proceed
+    if (!this.canProceed()) {
+      throw new Error(
+        'Cannot proceed with research - invalid state or blocking suggestions'
+      );
+    }
+
+    const startTime = Date.now();
+
+    try {
+      const articles = await this.handleError(
+        async () => this.fetchNewsArticles(contact, company),
+        async () => this.getFallbackStrategy()
+      );
+
+      // Record performance metrics
+      this.recordPerformance({
+        researchTime: Date.now() - startTime,
+      });
+
+      // Update shared context with findings
+      this.contextManager.setResearchFindings(
+        articles,
+        {
+          id: 'auto-generated',
+          title: `${company.name} Recent Developments`,
+          body: `Research findings about ${company.name}'s recent activities and developments.`,
+        },
+        articles.reduce((acc, article, index) => {
+          acc[article.id] = 1 - index / articles.length; // Higher relevance for earlier articles
+          return acc;
+        }, {} as Record<string, number>)
+      );
+
+      // Handoff to writer agent
+      this.handoffToAgent('writer', 'Research completed successfully', {
+        articleCount: articles.length,
+      });
+
+      return articles;
+    } catch (error) {
+      // Record error in shared context
+      this.contextManager.recordError(
+        'researcher',
+        error instanceof Error ? error.message : 'Unknown error during research'
+      );
+      throw error;
+    }
   }
 
   /**
@@ -248,11 +348,17 @@ Explain your categorization reasoning and return the category.`;
     contact: Contact,
     company: Company
   ): Promise<NewsArticle[]> {
+    this.updatePhase('research', 'querying', 0.2);
+
     // Build optimized search query using autonomous decision making
     const query = await this.buildSearchQuery(contact, company);
 
+    this.updatePhase('research', 'fetching', 0.4);
+
     // Fetch articles from Perplexity API
     const response = await searchPerplexityNews(query);
+
+    this.updatePhase('research', 'processing', 0.6);
 
     // Process and filter articles
     const sixMonthsAgo = new Date();
@@ -271,6 +377,8 @@ Explain your categorization reasoning and return the category.`;
         tags: [],
       }));
 
+    this.updatePhase('research', 'categorizing', 0.8);
+
     // Categorize articles using autonomous analysis
     const categorizedArticles = await Promise.all(
       articles.map(async (article) => ({
@@ -280,10 +388,16 @@ Explain your categorization reasoning and return the category.`;
     );
 
     // Update agent's article history
-    this.context.articleHistory = categorizedArticles;
+    this.searchContext.articleHistory = categorizedArticles;
+
+    this.updatePhase('research', 'prioritizing', 0.9);
 
     // Sort articles by category and relevance
-    return this.prioritizeArticles(categorizedArticles);
+    const prioritizedArticles = this.prioritizeArticles(categorizedArticles);
+
+    this.updatePhase('research', 'complete', 1);
+
+    return prioritizedArticles;
   }
 
   /**

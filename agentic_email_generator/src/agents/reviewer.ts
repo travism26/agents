@@ -6,6 +6,8 @@
 
 import { Contact, NewsArticle, Angle } from '../models/models';
 import { ChatOpenAI } from '@langchain/openai';
+import { BaseAgent } from './base';
+import { ContextManager, SharedContext } from '../models/context';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -45,10 +47,20 @@ export interface ReviewResult {
     contentRelevance: number;
     structureQuality: number;
     improvementAreas: string[];
+    styleMatch?: string;
+    toneMatch?: string;
+    clarity?: number;
+    engagement?: number;
+    contextualRelevance?: number;
+    improvements?: {
+      suggestion: string;
+      impact: number;
+      reasoning: string;
+    }[];
   };
 }
 
-export class ReviewerAgent {
+export class ReviewerAgent extends BaseAgent {
   private readonly MAX_REVISIONS = 3;
   private readonly DEFAULT_CRITERIA: QualityCriteria = {
     minLength: 100,
@@ -58,29 +70,51 @@ export class ReviewerAgent {
     forbidden: ['spam', 'aggressive', 'pushy'],
   };
 
-  private context: {
-    previousReviews: ReviewResult[];
-    commonIssues: Map<string, number>;
-    successPatterns: Map<string, number>;
-    lastReviewTime?: Date;
-  };
+  constructor(contextManager: ContextManager) {
+    super(contextManager, 'reviewer');
+  }
 
-  constructor() {
-    this.context = {
-      previousReviews: [],
-      commonIssues: new Map(),
-      successPatterns: new Map(),
+  /**
+   * Gets valid phases for this agent
+   */
+  protected getValidPhases(): SharedContext['state']['phase'][] {
+    return ['review', 'revision'];
+  }
+
+  /**
+   * Implements fallback strategy for review failures
+   */
+  protected async getFallbackStrategy(): Promise<ReviewResult> {
+    // Return a conservative review result
+    return {
+      approved: false,
+      score: 0,
+      suggestions: ['Manual review required due to analysis failure'],
+      analysis: {
+        toneScore: 0,
+        personalizationScore: 0,
+        contentRelevance: 0,
+        structureQuality: 0,
+        improvementAreas: ['manual_review_needed'],
+      },
     };
   }
 
   /**
-   * Reviews an email draft using autonomous analysis
+   * Reviews an email draft using autonomous analysis with multiple phases
    */
   async review(
     draft: string,
     context: EmailContext,
     criteria: Partial<QualityCriteria> = {}
   ): Promise<ReviewResult> {
+    // Verify we can proceed
+    if (!this.canProceed()) {
+      throw new Error(
+        'Cannot proceed with review - invalid state or blocking suggestions'
+      );
+    }
+
     const finalCriteria = { ...this.DEFAULT_CRITERIA, ...criteria };
 
     // Check revision limit
@@ -94,52 +128,116 @@ export class ReviewerAgent {
       };
     }
 
-    // Perform autonomous analysis
-    const analysis = await this.analyzeContent(draft, context, finalCriteria);
+    try {
+      // Record start time for performance tracking
+      const startTime = Date.now();
 
-    // Update context with review results
-    this.updateContext(analysis);
+      // Phase 1: Initial Analysis
+      this.updatePhase('review', 'initial_analysis', 0.2);
+      const initialAnalysis = await this.performInitialAnalysis(draft, context);
 
-    return analysis;
+      // Record initial analysis decision
+      this.recordDecision(
+        'initial_analysis',
+        `Initial analysis completed with score ${initialAnalysis.score}`,
+        0.8,
+        { score: initialAnalysis.score }
+      );
+
+      // Phase 2: Detailed Review
+      this.updatePhase('review', 'detailed_review', 0.4);
+      const detailedReview = await this.performDetailedReview(
+        draft,
+        context,
+        finalCriteria,
+        initialAnalysis
+      );
+
+      // Phase 3: Improvement Generation (if needed)
+      let improvements;
+      if (detailedReview.score < 80) {
+        this.updatePhase('review', 'improvement_generation', 0.6);
+        improvements = await this.generateImprovements(
+          draft,
+          context,
+          detailedReview
+        );
+        detailedReview.improvedContent = improvements.improvedContent;
+        if (detailedReview.analysis) {
+          detailedReview.analysis.improvements = improvements.improvements;
+        }
+      }
+
+      // Phase 4: Final Validation
+      this.updatePhase('review', 'final_validation', 0.8);
+      const finalReview = await this.validateReview(detailedReview, context);
+
+      // Update shared context with review results
+      this.contextManager.addDraftVersion(draft, {
+        score: finalReview.score,
+        suggestions: finalReview.suggestions,
+        improvements:
+          finalReview.analysis?.improvements?.map((imp) => imp.suggestion) ||
+          [],
+      });
+
+      // Record performance metrics
+      this.recordPerformance({
+        reviewTime: Date.now() - startTime,
+      });
+
+      // Record final decision
+      this.recordDecision(
+        'review_completion',
+        `Review completed with ${
+          finalReview.approved ? 'approval' : 'rejection'
+        }`,
+        0.9,
+        {
+          approved: finalReview.approved,
+          score: finalReview.score,
+        }
+      );
+
+      this.updatePhase('review', 'complete', 1);
+
+      return finalReview;
+    } catch (error) {
+      // Attempt recovery using fallback strategy
+      return this.handleError(
+        async () => {
+          throw error;
+        },
+        async () => this.getFallbackStrategy()
+      );
+    }
   }
 
   /**
-   * Performs comprehensive content analysis using LLM
+   * Performs initial quick analysis of the draft
    */
-  private async analyzeContent(
+  private async performInitialAnalysis(
     draft: string,
-    context: EmailContext,
-    criteria: QualityCriteria
+    context: EmailContext
   ): Promise<ReviewResult> {
-    const prompt = `As an expert email reviewer, analyze this email draft for quality and effectiveness.
+    const prompt = `Perform a quick initial analysis of this email draft.
 
 Draft:
 ${draft}
 
 Context:
-- Contact: ${context.contact.name} (${context.contact.title} at ${
-      context.contact.company
-    })
+- Contact: ${context.contact.name} (${context.contact.title})
 - Goal: ${context.angle.title}
-- Previous Reviews: ${this.summarizePreviousReviews()}
-- Common Issues: ${this.summarizeCommonIssues()}
 
-Quality Criteria:
-- Length: ${criteria.minLength}-${criteria.maxLength} chars
-- Required Elements: ${criteria.requiredElements.join(', ')}
-- Tone: ${criteria.tone.join(', ')}
-- Forbidden Elements: ${criteria.forbidden.join(', ')}
+Previous Reviews:
+${this.summarizePreviousReviews()}
 
 Provide a JSON response with:
-- score: Overall quality score (0-100)
-- approved: Boolean indicating if email meets quality standards
-- suggestions: Array of specific improvement suggestions
+- score: Initial quality score (0-100)
 - analysis: {
     toneScore: 0-100,
-    personalizationScore: 0-100,
     contentRelevance: 0-100,
-    structureQuality: 0-100,
-    improvementAreas: Array of areas needing improvement
+    improvementAreas: Array of major areas needing attention
   }`;
 
     const response = await llm.invoke([
@@ -147,149 +245,189 @@ Provide a JSON response with:
       { role: 'user', content: prompt },
     ]);
 
-    const result = JSON.parse(response.content.toString());
-
-    // If score is low, generate improved content
-    if (result.score < 80) {
-      result.improvedContent = await this.generateImprovedContent(
-        draft,
-        context,
-        result.suggestions
-      );
-    }
-
-    return result;
+    return JSON.parse(response.content.toString());
   }
 
   /**
-   * Generates improved content based on review findings
+   * Performs detailed review incorporating contact history and patterns
    */
-  private async generateImprovedContent(
+  private async performDetailedReview(
     draft: string,
     context: EmailContext,
-    suggestions: string[]
-  ): Promise<string> {
-    const prompt = `Improve this email draft based on the following suggestions.
+    criteria: QualityCriteria,
+    initialAnalysis: ReviewResult
+  ): Promise<ReviewResult> {
+    const sharedContext = this.getSharedContext();
+    const previousDrafts = sharedContext.memory.draftHistory;
 
-Original Draft:
+    const prompt = `Perform a detailed review of this email draft.
+
+Draft:
 ${draft}
 
+Initial Analysis:
+${JSON.stringify(initialAnalysis.analysis)}
+
 Context:
-- Contact: ${context.contact.name} (${context.contact.title} at ${
-      context.contact.company
-    })
+- Contact: ${context.contact.name} (${context.contact.title})
 - Goal: ${context.angle.title}
+- Previous Drafts: ${previousDrafts.length}
+- Previous Feedback: ${this.summarizePreviousFeedback()}
 
-Suggestions:
-${suggestions.join('\n')}
+Quality Criteria:
+${JSON.stringify(criteria, null, 2)}
 
-Success Patterns:
-${this.summarizeSuccessPatterns()}
-
-Generate an improved version that addresses all suggestions while maintaining the original intent.`;
+Provide a comprehensive JSON analysis including:
+- score: Detailed quality score (0-100)
+- approved: Boolean indicating if email meets standards
+- analysis: {
+    toneScore: 0-100,
+    personalizationScore: 0-100,
+    contentRelevance: 0-100,
+    structureQuality: 0-100,
+    clarity: 0-100,
+    engagement: 0-100,
+    contextualRelevance: 0-100,
+    styleMatch: string,
+    toneMatch: string,
+    improvementAreas: Array of specific areas needing improvement
+  }
+- suggestions: Array of detailed improvement suggestions`;
 
     const response = await llm.invoke([
-      { role: 'system', content: 'You are an expert email writer.' },
+      { role: 'system', content: 'You are an expert email reviewer.' },
       { role: 'user', content: prompt },
     ]);
 
-    return response.content.toString();
+    return JSON.parse(response.content.toString());
   }
 
   /**
-   * Updates agent's context with new review information
+   * Generates specific improvements with reasoning
    */
-  private updateContext(review: ReviewResult) {
-    this.context.previousReviews.push(review);
-    this.context.lastReviewTime = new Date();
+  private async generateImprovements(
+    draft: string,
+    context: EmailContext,
+    review: ReviewResult
+  ): Promise<{
+    improvedContent: string;
+    improvements: { suggestion: string; impact: number; reasoning: string }[];
+  }> {
+    const sharedContext = this.getSharedContext();
+    const previousDrafts = sharedContext.memory.draftHistory;
 
-    // Update common issues
-    review.analysis?.improvementAreas.forEach((area) => {
-      this.context.commonIssues.set(
-        area,
-        (this.context.commonIssues.get(area) || 0) + 1
+    const prompt = `Generate specific improvements for this email draft.
+
+Draft:
+${draft}
+
+Review Analysis:
+${JSON.stringify(review.analysis)}
+
+Context:
+- Contact: ${context.contact.name}
+- Previous Drafts: ${previousDrafts.length}
+- Previous Feedback: ${this.summarizePreviousFeedback()}
+
+For each improvement area, provide:
+- Specific suggestion
+- Expected impact (0-100)
+- Detailed reasoning
+
+Also generate an improved version of the entire email.
+
+Return as JSON with:
+- improvedContent: string
+- improvements: Array of {suggestion, impact, reasoning}`;
+
+    const response = await llm.invoke([
+      { role: 'system', content: 'You are an expert email improver.' },
+      { role: 'user', content: prompt },
+    ]);
+
+    return JSON.parse(response.content.toString());
+  }
+
+  /**
+   * Performs final validation of the review
+   */
+  private async validateReview(
+    review: ReviewResult,
+    context: EmailContext
+  ): Promise<ReviewResult> {
+    const sharedContext = this.getSharedContext();
+    const previousDrafts = sharedContext.memory.draftHistory;
+
+    // Adjust scores based on historical patterns
+    if (previousDrafts.length > 0) {
+      const successfulDrafts = previousDrafts.filter(
+        (draft) => draft.feedback && draft.feedback.score >= 80
       );
-    });
 
-    // Update success patterns if review was approved
-    if (review.approved) {
-      const patterns = this.extractSuccessPatterns(review);
-      patterns.forEach((pattern) => {
-        this.context.successPatterns.set(
-          pattern,
-          (this.context.successPatterns.get(pattern) || 0) + 1
-        );
-      });
+      if (successfulDrafts.length > 0) {
+        // Boost scores for matching successful patterns
+        if (review.analysis) {
+          review.analysis.toneScore *= 1.1;
+          review.analysis.personalizationScore *= 1.1;
+        }
+      }
     }
+
+    return review;
   }
 
   /**
-   * Extracts success patterns from approved reviews
-   */
-  private extractSuccessPatterns(review: ReviewResult): string[] {
-    const patterns: string[] = [];
-
-    const { analysis } = review;
-    if (!analysis) return patterns;
-
-    if ((analysis.toneScore || 0) >= 90) {
-      patterns.push('high_tone_alignment');
-    }
-    if ((analysis.personalizationScore || 0) >= 90) {
-      patterns.push('strong_personalization');
-    }
-    if ((analysis.contentRelevance || 0) >= 90) {
-      patterns.push('high_content_relevance');
-    }
-    if ((analysis.structureQuality || 0) >= 90) {
-      patterns.push('excellent_structure');
-    }
-
-    return patterns;
-  }
-
-  /**
-   * Summarizes previous review results
+   * Summarizes previous reviews
    */
   private summarizePreviousReviews(): string {
-    if (!this.context.previousReviews.length) {
+    const sharedContext = this.getSharedContext();
+    const previousDrafts = sharedContext.memory.draftHistory;
+
+    if (!previousDrafts.length) {
       return 'No previous reviews';
     }
 
     const avgScore =
-      this.context.previousReviews.reduce((sum, r) => sum + r.score, 0) /
-      this.context.previousReviews.length;
+      previousDrafts.reduce(
+        (sum, draft) => sum + (draft.feedback?.score || 0),
+        0
+      ) / previousDrafts.length;
 
     return `${
-      this.context.previousReviews.length
+      previousDrafts.length
     } previous reviews, avg score: ${avgScore.toFixed(1)}`;
   }
 
   /**
-   * Summarizes common issues found in reviews
+   * Summarizes previous feedback
    */
-  private summarizeCommonIssues(): string {
-    if (!this.context.commonIssues.size) {
-      return 'No common issues identified';
+  private summarizePreviousFeedback(): string {
+    const sharedContext = this.getSharedContext();
+    const previousDrafts = sharedContext.memory.draftHistory;
+
+    if (!previousDrafts.length) {
+      return 'No previous feedback';
     }
 
-    return Array.from(this.context.commonIssues.entries())
-      .sort(([, a], [, b]) => b - a)
-      .map(([issue, count]) => `${issue} (${count}x)`)
-      .join(', ');
-  }
+    const allSuggestions = previousDrafts.flatMap(
+      (draft) => draft.feedback?.suggestions || []
+    );
 
-  /**
-   * Summarizes patterns found in successful emails
-   */
-  private summarizeSuccessPatterns(): string {
-    if (!this.context.successPatterns.size) {
-      return 'No success patterns established';
+    if (!allSuggestions.length) {
+      return 'No previous suggestions';
     }
 
-    return Array.from(this.context.successPatterns.entries())
+    // Count suggestion frequencies
+    const suggestionCounts = allSuggestions.reduce((acc, suggestion) => {
+      acc[suggestion] = (acc[suggestion] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Return most common suggestions
+    return Object.entries(suggestionCounts)
       .sort(([, a], [, b]) => b - a)
-      .map(([pattern, count]) => `${pattern} (${count}x)`)
+      .slice(0, 3)
+      .map(([suggestion, count]) => `${suggestion} (${count}x)`)
       .join(', ');
   }
 }

@@ -6,6 +6,8 @@
 
 import { User, Contact, NewsArticle } from '../models/models';
 import { ChatOpenAI } from '@langchain/openai';
+import { BaseAgent } from './base';
+import { ContextManager, SharedContext } from '../models/context';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -49,17 +51,95 @@ export interface EmailDraft {
 /**
  * WriterAgent class with autonomous email generation capabilities
  */
-export class WriterAgent {
-  private context: {
-    user?: User;
-    contact?: Contact;
+export class WriterAgent extends BaseAgent {
+  private writerContext: {
     previousEmails?: EmailDraft[];
     stylePreferences?: Record<string, any>;
     effectivePatterns?: Record<string, number>;
   };
 
-  constructor() {
-    this.context = {};
+  constructor(contextManager: ContextManager) {
+    super(contextManager, 'writer');
+    this.writerContext = {};
+  }
+
+  /**
+   * Gets valid phases for this agent
+   */
+  protected getValidPhases(): SharedContext['state']['phase'][] {
+    return ['writing', 'revision'];
+  }
+
+  /**
+   * Implements fallback strategy for writing failures
+   */
+  protected async getFallbackStrategy(): Promise<EmailDraft> {
+    const context = this.getSharedContext();
+    const latestDraft =
+      context.memory.draftHistory[context.memory.draftHistory.length - 1];
+
+    // Try a more straightforward approach
+    const simplifiedDraft = await this.generateSimplifiedDraft(
+      context.user,
+      context.contact,
+      latestDraft?.content
+    );
+
+    return simplifiedDraft;
+  }
+
+  /**
+   * Generates a simplified draft when normal generation fails
+   */
+  private async generateSimplifiedDraft(
+    user: User,
+    contact: Contact,
+    previousContent?: string
+  ): Promise<EmailDraft> {
+    const prompt = `Generate a simple, straightforward email draft.
+
+Previous Content (for reference):
+${previousContent || 'No previous content'}
+
+Contact:
+- Name: ${contact.name}
+- Title: ${contact.title}
+- Company: ${contact.company}
+
+Keep it brief and focused on scheduling a discussion.
+Use a professional tone and standard business email format.`;
+
+    const response = await llm.invoke([
+      { role: 'system', content: 'You are an expert email writer.' },
+      { role: 'user', content: prompt },
+    ]);
+
+    const content = response.content.toString();
+
+    return {
+      content,
+      metadata: {
+        tone: 'professional',
+        wordCount: content.split(/\s+/).length,
+        targetGoals: ['schedule_meeting'],
+        includedArticles: [],
+        personalizationFactors: ['role_based'],
+        styleAdherence: {
+          formalityScore: 0.8,
+          toneAlignment: 0.8,
+          clarity: 0.9,
+        },
+      },
+    };
+  }
+
+  /**
+   * Extracts communication patterns from content
+   */
+  private extractPatterns(content: string): string[] {
+    return (
+      content.match(/(^|\. )[A-Z][^.!?]*[.!?]/g)?.map((s) => s.trim()) || []
+    );
   }
 
   /**
@@ -152,51 +232,88 @@ Generate email content that feels personal and purposeful.`;
    * Summarizes previous interactions for context
    */
   private summarizePreviousInteractions(): string {
-    if (!this.context.previousEmails?.length) {
+    if (!this.writerContext.previousEmails?.length) {
       return 'No previous interactions recorded';
     }
 
-    return `Previous emails: ${this.context.previousEmails.length}
-Common themes: ${this.analyzeCommonThemes()}
-Effective patterns: ${this.summarizeEffectivePatterns()}`;
+    const context = this.getSharedContext();
+    const history = context.memory.draftHistory;
+    const patterns = this.extractPatternsFromHistory(history);
+
+    return `Previous drafts: ${history.length}
+Common patterns: ${patterns.join(', ')}`;
   }
 
   /**
-   * Analyzes common themes in previous emails
+   * Extracts patterns from draft history
    */
-  private analyzeCommonThemes(): string {
-    if (!this.context.previousEmails?.length) {
-      return 'No themes established';
-    }
-
-    // Analyze themes from previous emails
-    const themes = this.context.previousEmails
-      .map((email) => email.metadata.targetGoals)
-      .flat();
-
-    const themeCount = themes.reduce((acc, theme) => {
-      acc[theme] = (acc[theme] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    return Object.entries(themeCount)
-      .sort(([, a], [, b]) => b - a)
-      .map(([theme, count]) => `${theme} (${count}x)`)
-      .join(', ');
+  private extractPatternsFromHistory(
+    history: SharedContext['memory']['draftHistory']
+  ): string[] {
+    const patterns = new Set<string>();
+    history.forEach((entry) => {
+      const contentPatterns = this.extractPatterns(entry.content);
+      contentPatterns.forEach((p) => patterns.add(p));
+    });
+    return Array.from(patterns);
   }
 
   /**
-   * Summarizes patterns that have been effective
+   * Determines optimal email style and tone based on context
    */
-  private summarizeEffectivePatterns(): string {
-    if (!this.context.effectivePatterns) {
-      return 'No established patterns';
+  private determineOptimalStyle(
+    contact: Contact,
+    goal: string
+  ): { style: EmailOptions['style']; tone: EmailOptions['tone'] } {
+    const context = this.getSharedContext();
+    const history = context.memory.draftHistory;
+
+    // Analyze successful drafts
+    const successfulStyles = history
+      .filter((draft) => draft.feedback && draft.feedback.score >= 80)
+      .map((draft) => ({
+        style: draft.content.includes('Dear') ? 'formal' : 'casual',
+        tone: draft.content.includes('would you be interested')
+          ? 'friendly'
+          : 'direct',
+      }));
+
+    if (successfulStyles.length > 0) {
+      // Use most common successful style
+      const style = successfulStyles
+        .map((s) => s.style)
+        .reduce((a, b) =>
+          successfulStyles.filter((s) => s.style === a).length >=
+          successfulStyles.filter((s) => s.style === b).length
+            ? a
+            : b
+        );
+
+      const tone = successfulStyles
+        .map((s) => s.tone)
+        .reduce((a, b) =>
+          successfulStyles.filter((s) => s.tone === a).length >=
+          successfulStyles.filter((s) => s.tone === b).length
+            ? a
+            : b
+        );
+
+      return {
+        style: style as EmailOptions['style'],
+        tone: tone as EmailOptions['tone'],
+      };
     }
 
-    return Object.entries(this.context.effectivePatterns)
-      .sort(([, a], [, b]) => b - a)
-      .map(([pattern, score]) => `${pattern} (${score.toFixed(1)})`)
-      .join(', ');
+    // Default based on contact's role
+    const formalTitles = ['CEO', 'President', 'Director', 'VP', 'Chief'];
+    const isSeniorExecutive = formalTitles.some((title) =>
+      contact.title?.toLowerCase().includes(title.toLowerCase())
+    );
+
+    return {
+      style: isSeniorExecutive ? 'formal' : 'professional',
+      tone: isSeniorExecutive ? 'direct' : 'friendly',
+    };
   }
 
   /**
@@ -208,61 +325,108 @@ Effective patterns: ${this.summarizeEffectivePatterns()}`;
     emailOptions: EmailOptions,
     newsArticles: NewsArticle[]
   ): Promise<EmailDraft> {
-    // Update agent's context
-    this.context.user = user;
-    this.context.contact = contact;
+    // Verify we can proceed
+    if (!this.canProceed()) {
+      throw new Error(
+        'Cannot proceed with composition - invalid state or blocking suggestions'
+      );
+    }
 
-    // Analyze articles and determine narrative strategy
-    const { narrative, selectedArticles } = await this.analyzeArticles(
-      newsArticles,
-      emailOptions.goal
-    );
+    try {
+      // Record start time for performance tracking
+      const startTime = Date.now();
 
-    // Generate personalized content
-    const content = await this.generatePersonalizedContent(
-      contact,
-      emailOptions.goal,
-      emailOptions.style,
-      narrative
-    );
+      // Determine optimal style and tone
+      const optimalStyle = this.determineOptimalStyle(
+        contact,
+        emailOptions.goal
+      );
+      const finalStyle = emailOptions.style || optimalStyle.style;
+      const finalTone = emailOptions.tone || optimalStyle.tone;
 
-    // Calculate word count
-    const wordCount = content.split(/\s+/).length;
+      // Record style decision
+      this.recordDecision(
+        'style_selection',
+        `Selected ${finalStyle} style and ${finalTone} tone based on contact analysis`,
+        0.8,
+        { style: finalStyle, tone: finalTone }
+      );
 
-    // Generate subject line
-    const subject = await this.generateSubjectLine(
-      emailOptions.goal,
-      narrative,
-      emailOptions.tone
-    );
+      // Analyze articles and create narrative
+      const { narrative, selectedArticles } = await this.analyzeArticles(
+        newsArticles,
+        emailOptions.goal
+      );
 
-    // Create metadata
-    const metadata = {
-      tone: emailOptions.tone,
-      wordCount,
-      targetGoals: [emailOptions.goal],
-      includedArticles: selectedArticles,
-      generationStrategy: narrative,
-      personalizationFactors: [
-        'role-based-context',
-        'industry-alignment',
-        'news-integration',
-      ],
-      styleAdherence: {
-        formalityScore: emailOptions.style === 'formal' ? 0.9 : 0.7,
-        toneAlignment: 0.85,
-        clarity: 0.9,
-      },
-    };
+      // Generate content
+      const content = await this.generatePersonalizedContent(
+        contact,
+        emailOptions.goal,
+        finalStyle,
+        narrative
+      );
 
-    // Store draft in context
-    const draft = { content, subject, metadata };
-    this.context.previousEmails = [
-      ...(this.context.previousEmails || []),
-      draft,
-    ];
+      // Generate subject line
+      const subject = await this.generateSubjectLine(
+        emailOptions.goal,
+        narrative,
+        finalTone
+      );
 
-    return draft;
+      // Calculate metrics
+      const wordCount = content.split(/\s+/).length;
+
+      // Create metadata
+      const metadata = {
+        tone: finalTone,
+        wordCount,
+        targetGoals: [emailOptions.goal],
+        includedArticles: selectedArticles,
+        generationStrategy: narrative,
+        personalizationFactors: [
+          'role-based-context',
+          'industry-alignment',
+          'news-integration',
+        ],
+        styleAdherence: {
+          formalityScore: finalStyle === 'formal' ? 0.9 : 0.7,
+          toneAlignment: 0.85,
+          clarity: 0.9,
+        },
+      };
+
+      // Create draft
+      const draft = { content, subject, metadata };
+
+      // Update context
+      this.writerContext.previousEmails = [
+        ...(this.writerContext.previousEmails || []),
+        draft,
+      ];
+
+      // Record performance metrics
+      this.recordPerformance({
+        writingTime: Date.now() - startTime,
+      });
+
+      // Record completion
+      this.recordDecision(
+        'draft_completion',
+        'Successfully generated personalized email draft',
+        0.9,
+        { wordCount, style: finalStyle }
+      );
+
+      return draft;
+    } catch (error) {
+      // Attempt recovery using fallback strategy
+      return this.handleError(
+        async () => {
+          throw error;
+        },
+        async () => this.getFallbackStrategy()
+      );
+    }
   }
 
   /**
