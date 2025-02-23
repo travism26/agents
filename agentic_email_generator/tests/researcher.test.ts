@@ -1,7 +1,84 @@
 import { Contact, Company, NewsArticle } from '../src/models/models';
-import { fetchNewsArticles, ArticleCategory } from '../src/agents/researcher';
+import { ResearcherAgent, ArticleCategory } from '../src/agents/researcher';
+import axios from 'axios';
+import { ChatOpenAI } from '@langchain/openai';
+
+// Mock axios and ChatOpenAI
+jest.mock('axios');
+jest.mock('@langchain/openai');
+const mockedAxios = axios as jest.Mocked<typeof axios>;
+const MockedChatOpenAI = ChatOpenAI as jest.MockedClass<typeof ChatOpenAI>;
 
 describe('ResearcherAgent', () => {
+  let researcher: ResearcherAgent;
+
+  beforeEach(() => {
+    // Reset all mocks before each test
+    jest.clearAllMocks();
+
+    // Mock ChatOpenAI invoke method
+    MockedChatOpenAI.prototype.invoke = jest
+      .fn()
+      .mockImplementation(async (messages) => {
+        const userMessage = messages[1].content as string;
+
+        if (userMessage.includes('create an optimal news search query')) {
+          return {
+            content: 'Test Corp recent developments technology industry',
+          };
+        }
+
+        if (userMessage.includes('Analyze this business news article')) {
+          if (userMessage.includes('Partnership')) {
+            return {
+              content:
+                'partnerships_investments - This article discusses a strategic partnership.',
+            };
+          }
+          if (userMessage.includes('Innovation')) {
+            return {
+              content:
+                'developments_innovations - This article covers new product development.',
+            };
+          }
+          return { content: 'other - General company news.' };
+        }
+
+        return { content: 'default response' };
+      });
+
+    // Create researcher agent after mocks are set up
+    researcher = new ResearcherAgent();
+
+    // Mock successful Perplexity API response
+    mockedAxios.post.mockResolvedValue({
+      data: {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify([
+                {
+                  title: 'Test Corp Announces New Partnership',
+                  url: 'https://example.com/1',
+                  publishedAt: new Date().toISOString(),
+                  summary: 'Test Corp partners with Industry leader',
+                  source: 'TechNews',
+                },
+                {
+                  title: 'Test Corp Launches Innovation',
+                  url: 'https://example.com/2',
+                  publishedAt: new Date().toISOString(),
+                  summary: 'Revolutionary new product development',
+                  source: 'BusinessDaily',
+                },
+              ]),
+            },
+          },
+        ],
+      },
+    });
+  });
+
   const mockContact: Contact = {
     _id: '1',
     name: 'John Doe',
@@ -17,9 +94,72 @@ describe('ResearcherAgent', () => {
     },
   };
 
-  describe('fetchNewsArticles', () => {
+  describe('research', () => {
+    it('should update agent context with company and contact information', async () => {
+      const articles = await researcher.research(mockContact, mockCompany);
+
+      // Verify articles were returned
+      expect(articles).toBeDefined();
+      expect(articles.length).toBeGreaterThan(0);
+
+      // Context updates are private, but we can verify the effects through article processing
+      const firstArticle = articles[0];
+      expect(firstArticle.companyName).toBe(mockCompany.name);
+    });
+
+    it('should make correct API call to Perplexity', async () => {
+      await researcher.research(mockContact, mockCompany);
+
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        'https://api.perplexity.ai/chat/completions',
+        expect.objectContaining({
+          model: 'sonar',
+          messages: expect.arrayContaining([
+            expect.objectContaining({
+              role: 'system',
+            }),
+            expect.objectContaining({
+              role: 'user',
+              content: expect.stringContaining('Test Corp'),
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+          }),
+        })
+      );
+    });
+
+    it('should handle API errors gracefully', async () => {
+      mockedAxios.post.mockRejectedValueOnce(new Error('API Error'));
+
+      await expect(
+        researcher.research(mockContact, mockCompany)
+      ).rejects.toThrow('Failed to fetch news articles from Perplexity API');
+    });
+
+    it('should handle invalid API response format', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          choices: [
+            {
+              message: {
+                content: 'invalid json',
+              },
+            },
+          ],
+        },
+      });
+
+      await expect(
+        researcher.research(mockContact, mockCompany)
+      ).rejects.toThrow();
+    });
+
     it('should filter out articles older than 6 months', async () => {
-      const articles = await fetchNewsArticles(mockContact, mockCompany);
+      const articles = await researcher.research(mockContact, mockCompany);
       const now = new Date();
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(now.getMonth() - 6);
@@ -31,17 +171,32 @@ describe('ResearcherAgent', () => {
     });
 
     it('should categorize articles correctly', async () => {
-      const articles = await fetchNewsArticles(mockContact, mockCompany);
+      const articles = await researcher.research(mockContact, mockCompany);
 
       // Verify each article has exactly one category tag
       articles.forEach((article) => {
         expect(article.tags).toHaveLength(1);
         expect(Object.values(ArticleCategory)).toContain(article.tags[0]);
       });
+
+      // Verify specific categorizations
+      const partnershipArticle = articles.find((a) =>
+        a.title.includes('Partnership')
+      );
+      const innovationArticle = articles.find((a) =>
+        a.title.includes('Innovation')
+      );
+
+      expect(partnershipArticle?.tags[0]).toBe(
+        ArticleCategory.PARTNERSHIPS_INVESTMENTS
+      );
+      expect(innovationArticle?.tags[0]).toBe(
+        ArticleCategory.DEVELOPMENTS_INNOVATIONS
+      );
     });
 
     it('should prioritize articles in the correct order', async () => {
-      const articles = await fetchNewsArticles(mockContact, mockCompany);
+      const articles = await researcher.research(mockContact, mockCompany);
 
       const categoryOrder = [
         ArticleCategory.PARTNERSHIPS_INVESTMENTS,
@@ -64,7 +219,7 @@ describe('ResearcherAgent', () => {
     });
 
     it('should include required article fields', async () => {
-      const articles = await fetchNewsArticles(mockContact, mockCompany);
+      const articles = await researcher.research(mockContact, mockCompany);
 
       articles.forEach((article) => {
         expect(article).toHaveProperty('id');
@@ -76,6 +231,83 @@ describe('ResearcherAgent', () => {
         expect(article).toHaveProperty('companyName');
         expect(article).toHaveProperty('tags');
       });
+    });
+
+    it('should use autonomous decision making for query building', async () => {
+      await researcher.research(mockContact, mockCompany);
+
+      // Verify LLM was called with appropriate messages
+      expect(MockedChatOpenAI.prototype.invoke).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'system',
+            content: expect.stringContaining('expert research strategist'),
+          }),
+          expect.objectContaining({
+            role: 'user',
+            content: expect.stringContaining(mockCompany.name),
+          }),
+        ])
+      );
+    });
+
+    it('should use autonomous analysis for article categorization', async () => {
+      const articles = await researcher.research(mockContact, mockCompany);
+
+      // Verify LLM was called for each article
+      expect(MockedChatOpenAI.prototype.invoke).toHaveBeenCalledTimes(3); // Once for query + twice for articles
+
+      // Verify categorization results
+      const partnershipArticle = articles.find((a) =>
+        a.title.includes('Partnership')
+      );
+      const innovationArticle = articles.find((a) =>
+        a.title.includes('Innovation')
+      );
+
+      expect(partnershipArticle?.tags[0]).toBe(
+        ArticleCategory.PARTNERSHIPS_INVESTMENTS
+      );
+      expect(innovationArticle?.tags[0]).toBe(
+        ArticleCategory.DEVELOPMENTS_INNOVATIONS
+      );
+    });
+
+    it('should maintain context across multiple research calls', async () => {
+      // First research call
+      await researcher.research(mockContact, mockCompany);
+
+      // Mock different articles for second call
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify([
+                  {
+                    title: 'Test Corp Leadership Change',
+                    url: 'https://example.com/3',
+                    publishedAt: new Date().toISOString(),
+                    summary: 'New CEO appointed',
+                    source: 'BusinessNews',
+                  },
+                ]),
+              },
+            },
+          ],
+        },
+      });
+
+      // Second research call
+      const articles = await researcher.research(mockContact, mockCompany);
+
+      // Verify LLM calls include previous context
+      const lastLLMCall = (
+        MockedChatOpenAI.prototype.invoke as jest.Mock
+      ).mock.calls.slice(-1)[0];
+
+      const userMessage = lastLLMCall[0][1].content;
+      expect(userMessage).toContain('Previous findings');
     });
   });
 });

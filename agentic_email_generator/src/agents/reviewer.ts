@@ -5,6 +5,19 @@
  */
 
 import { Contact, NewsArticle, Angle } from '../models/models';
+import { ChatOpenAI } from '@langchain/openai';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+// Initialize the OpenAI chat model
+const llm = new ChatOpenAI({
+  modelName: process.env.MODEL_NAME || 'gpt-4-turbo',
+  temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
+  maxTokens: parseInt(process.env.MAX_TOKENS || '4000'),
+  openAIApiKey: process.env.OPENAI_API_KEY,
+});
 
 export interface EmailContext {
   contact: Contact;
@@ -26,6 +39,13 @@ export interface ReviewResult {
   score: number;
   suggestions: string[];
   improvedContent?: string;
+  analysis?: {
+    toneScore: number;
+    personalizationScore: number;
+    contentRelevance: number;
+    structureQuality: number;
+    improvementAreas: string[];
+  };
 }
 
 export class ReviewerAgent {
@@ -38,12 +58,23 @@ export class ReviewerAgent {
     forbidden: ['spam', 'aggressive', 'pushy'],
   };
 
+  private context: {
+    previousReviews: ReviewResult[];
+    commonIssues: Map<string, number>;
+    successPatterns: Map<string, number>;
+    lastReviewTime?: Date;
+  };
+
+  constructor() {
+    this.context = {
+      previousReviews: [],
+      commonIssues: new Map(),
+      successPatterns: new Map(),
+    };
+  }
+
   /**
-   * Reviews an email draft against quality criteria
-   * @param draft The email draft to review
-   * @param context Email generation context including contact and content
-   * @param criteria Optional custom quality criteria
-   * @returns ReviewResult with approval status and improvement suggestions
+   * Reviews an email draft using autonomous analysis
    */
   async review(
     draft: string,
@@ -51,8 +82,6 @@ export class ReviewerAgent {
     criteria: Partial<QualityCriteria> = {}
   ): Promise<ReviewResult> {
     const finalCriteria = { ...this.DEFAULT_CRITERIA, ...criteria };
-    const suggestions: string[] = [];
-    let score = 100;
 
     // Check revision limit
     if (context.revisionCount >= this.MAX_REVISIONS) {
@@ -65,142 +94,202 @@ export class ReviewerAgent {
       };
     }
 
-    // Length checks
-    if (draft.length < finalCriteria.minLength) {
-      score -= 20;
-      suggestions.push(
-        `Email is too short (${draft.length} chars). Minimum length is ${finalCriteria.minLength} chars.`
-      );
-    }
-    if (draft.length > finalCriteria.maxLength) {
-      score -= 20;
-      suggestions.push(
-        `Email is too long (${draft.length} chars). Maximum length is ${finalCriteria.maxLength} chars.`
-      );
-    }
+    // Perform autonomous analysis
+    const analysis = await this.analyzeContent(draft, context, finalCriteria);
 
-    // Required elements check
-    for (const element of finalCriteria.requiredElements) {
-      if (!this.containsElement(draft.toLowerCase(), element)) {
-        score -= 15;
-        suggestions.push(`Missing required element: ${element}`);
-      }
-    }
+    // Update context with review results
+    this.updateContext(analysis);
 
-    // Tone analysis
-    const toneScore = this.analyzeTone(draft.toLowerCase(), finalCriteria.tone);
-    score = Math.max(0, score - (100 - toneScore));
-    if (toneScore < 70) {
-      suggestions.push(
-        'Tone does not match required style. Adjust for more professional and friendly language.'
-      );
-    }
-
-    // Check for forbidden elements
-    for (const forbidden of finalCriteria.forbidden) {
-      if (draft.toLowerCase().includes(forbidden.toLowerCase())) {
-        score -= 25;
-        suggestions.push(`Contains forbidden element: ${forbidden}`);
-      }
-    }
-
-    // Personalization check
-    if (!draft.includes(context.contact.name)) {
-      score -= 10;
-      suggestions.push("Email should be personalized with contact's name");
-    }
-
-    // Article reference check
-    const hasArticleReference = context.articles.some((article) =>
-      draft.toLowerCase().includes(article.title.toLowerCase())
-    );
-    if (!hasArticleReference) {
-      score -= 10;
-      suggestions.push('Email should reference at least one news article');
-    }
-
-    return {
-      approved: score >= 80 && suggestions.length === 0,
-      score,
-      suggestions:
-        suggestions.length > 0
-          ? suggestions
-          : ['Email draft meets all quality criteria.'],
-    };
+    return analysis;
   }
 
   /**
-   * Checks if the draft contains a required element
+   * Performs comprehensive content analysis using LLM
    */
-  private containsElement(draft: string, element: string): boolean {
-    const elementPatterns = {
-      greeting: /^(hi|hello|dear)\s+\w+/i,
-      'value proposition': /(benefit|value|opportunity|advantage)/i,
-      'call to action':
-        /(let('s|\s+us)\s+|would you|can we|please|contact|reach out)/i,
-    };
+  private async analyzeContent(
+    draft: string,
+    context: EmailContext,
+    criteria: QualityCriteria
+  ): Promise<ReviewResult> {
+    const prompt = `As an expert email reviewer, analyze this email draft for quality and effectiveness.
 
-    const pattern = elementPatterns[element as keyof typeof elementPatterns];
-    return pattern ? pattern.test(draft) : draft.includes(element);
+Draft:
+${draft}
+
+Context:
+- Contact: ${context.contact.name} (${context.contact.title} at ${
+      context.contact.company
+    })
+- Goal: ${context.angle.title}
+- Previous Reviews: ${this.summarizePreviousReviews()}
+- Common Issues: ${this.summarizeCommonIssues()}
+
+Quality Criteria:
+- Length: ${criteria.minLength}-${criteria.maxLength} chars
+- Required Elements: ${criteria.requiredElements.join(', ')}
+- Tone: ${criteria.tone.join(', ')}
+- Forbidden Elements: ${criteria.forbidden.join(', ')}
+
+Provide a JSON response with:
+- score: Overall quality score (0-100)
+- approved: Boolean indicating if email meets quality standards
+- suggestions: Array of specific improvement suggestions
+- analysis: {
+    toneScore: 0-100,
+    personalizationScore: 0-100,
+    contentRelevance: 0-100,
+    structureQuality: 0-100,
+    improvementAreas: Array of areas needing improvement
+  }`;
+
+    const response = await llm.invoke([
+      { role: 'system', content: 'You are an expert email reviewer.' },
+      { role: 'user', content: prompt },
+    ]);
+
+    const result = JSON.parse(response.content.toString());
+
+    // If score is low, generate improved content
+    if (result.score < 80) {
+      result.improvedContent = await this.generateImprovedContent(
+        draft,
+        context,
+        result.suggestions
+      );
+    }
+
+    return result;
   }
 
   /**
-   * Analyzes the tone of the email
+   * Generates improved content based on review findings
    */
-  private analyzeTone(draft: string, requiredTones: string[]): number {
-    let toneScore = 100;
+  private async generateImprovedContent(
+    draft: string,
+    context: EmailContext,
+    suggestions: string[]
+  ): Promise<string> {
+    const prompt = `Improve this email draft based on the following suggestions.
 
-    const toneIndicators = {
-      professional: [
-        'would',
-        'could',
-        'opportunity',
-        'professional',
-        'expertise',
-        'experience',
-        'solution',
-        'value',
-        'benefit',
-      ],
-      friendly: [
-        'hope',
-        'great',
-        'looking forward',
-        'appreciate',
-        'thank you',
-        'thanks',
-        'pleasure',
-        'enjoyed',
-      ],
-      concise: (text: string) => {
-        const sentences = text
-          .split(/[.!?]+/)
-          .filter((s) => s.trim().length > 0);
-        const avgLength =
-          sentences.reduce((sum, s) => sum + s.length, 0) / sentences.length;
-        return avgLength < 20;
-      },
-    };
+Original Draft:
+${draft}
 
-    for (const tone of requiredTones) {
-      if (tone === 'concise') {
-        if (!toneIndicators.concise(draft)) {
-          toneScore -= 20;
-        }
-        continue;
-      }
+Context:
+- Contact: ${context.contact.name} (${context.contact.title} at ${
+      context.contact.company
+    })
+- Goal: ${context.angle.title}
 
-      const indicators = toneIndicators[
-        tone as keyof typeof toneIndicators
-      ] as string[];
-      const matches = indicators.filter((indicator) =>
-        draft.includes(indicator)
+Suggestions:
+${suggestions.join('\n')}
+
+Success Patterns:
+${this.summarizeSuccessPatterns()}
+
+Generate an improved version that addresses all suggestions while maintaining the original intent.`;
+
+    const response = await llm.invoke([
+      { role: 'system', content: 'You are an expert email writer.' },
+      { role: 'user', content: prompt },
+    ]);
+
+    return response.content.toString();
+  }
+
+  /**
+   * Updates agent's context with new review information
+   */
+  private updateContext(review: ReviewResult) {
+    this.context.previousReviews.push(review);
+    this.context.lastReviewTime = new Date();
+
+    // Update common issues
+    review.analysis?.improvementAreas.forEach((area) => {
+      this.context.commonIssues.set(
+        area,
+        (this.context.commonIssues.get(area) || 0) + 1
       );
-      if (matches.length < 2) {
-        toneScore -= 20;
-      }
+    });
+
+    // Update success patterns if review was approved
+    if (review.approved) {
+      const patterns = this.extractSuccessPatterns(review);
+      patterns.forEach((pattern) => {
+        this.context.successPatterns.set(
+          pattern,
+          (this.context.successPatterns.get(pattern) || 0) + 1
+        );
+      });
+    }
+  }
+
+  /**
+   * Extracts success patterns from approved reviews
+   */
+  private extractSuccessPatterns(review: ReviewResult): string[] {
+    const patterns: string[] = [];
+
+    const { analysis } = review;
+    if (!analysis) return patterns;
+
+    if ((analysis.toneScore || 0) >= 90) {
+      patterns.push('high_tone_alignment');
+    }
+    if ((analysis.personalizationScore || 0) >= 90) {
+      patterns.push('strong_personalization');
+    }
+    if ((analysis.contentRelevance || 0) >= 90) {
+      patterns.push('high_content_relevance');
+    }
+    if ((analysis.structureQuality || 0) >= 90) {
+      patterns.push('excellent_structure');
     }
 
-    return Math.max(0, toneScore);
+    return patterns;
+  }
+
+  /**
+   * Summarizes previous review results
+   */
+  private summarizePreviousReviews(): string {
+    if (!this.context.previousReviews.length) {
+      return 'No previous reviews';
+    }
+
+    const avgScore =
+      this.context.previousReviews.reduce((sum, r) => sum + r.score, 0) /
+      this.context.previousReviews.length;
+
+    return `${
+      this.context.previousReviews.length
+    } previous reviews, avg score: ${avgScore.toFixed(1)}`;
+  }
+
+  /**
+   * Summarizes common issues found in reviews
+   */
+  private summarizeCommonIssues(): string {
+    if (!this.context.commonIssues.size) {
+      return 'No common issues identified';
+    }
+
+    return Array.from(this.context.commonIssues.entries())
+      .sort(([, a], [, b]) => b - a)
+      .map(([issue, count]) => `${issue} (${count}x)`)
+      .join(', ');
+  }
+
+  /**
+   * Summarizes patterns found in successful emails
+   */
+  private summarizeSuccessPatterns(): string {
+    if (!this.context.successPatterns.size) {
+      return 'No success patterns established';
+    }
+
+    return Array.from(this.context.successPatterns.entries())
+      .sort(([, a], [, b]) => b - a)
+      .map(([pattern, count]) => `${pattern} (${count}x)`)
+      .join(', ');
   }
 }

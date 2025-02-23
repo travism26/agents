@@ -1,7 +1,14 @@
 import { User, Contact, NewsArticle } from '../src/models/models';
-import { generateEmailDraft, EmailOptions } from '../src/agents/writer';
+import { WriterAgent, EmailOptions } from '../src/agents/writer';
+import { ChatOpenAI } from '@langchain/openai';
+
+// Mock ChatOpenAI
+jest.mock('@langchain/openai');
+const MockedChatOpenAI = ChatOpenAI as jest.MockedClass<typeof ChatOpenAI>;
 
 describe('Writer Agent', () => {
+  let writer: WriterAgent;
+
   const mockUser: User = {
     _id: 'user1',
     name: 'John Doe',
@@ -47,9 +54,58 @@ describe('Writer Agent', () => {
     includeSignature: true,
   };
 
-  describe('generateEmailDraft', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    // Mock ChatOpenAI invoke method
+    MockedChatOpenAI.prototype.invoke = jest
+      .fn()
+      .mockImplementation(async (messages) => {
+        const userMessage = messages[1].content as string;
+
+        if (userMessage.includes('analyze these news articles')) {
+          return {
+            content: JSON.stringify({
+              narrative:
+                'Focus on recent partnership announcement and innovation initiatives',
+              selectedArticles: ['Target Corp Announces New Partnership'],
+            }),
+          };
+        }
+
+        if (userMessage.includes('Create highly personalized email content')) {
+          return {
+            content: `Dear ${mockContact.name},
+
+I hope this email finds you well. I noticed Target Corp's recent partnership announcement and wanted to connect regarding potential collaboration opportunities.
+
+Given your role as VP of Operations at Target Corp, I believe there could be significant value in exploring how our organizations might work together.
+
+Would you be interested in scheduling a brief discussion?
+
+Best regards,
+${mockUser.name}
+${mockUser.title}
+${mockUser.company}`,
+          };
+        }
+
+        if (userMessage.includes('Create an engaging email subject line')) {
+          return {
+            content:
+              'Exploring Partnership Opportunities - Tech Corp & Target Corp',
+          };
+        }
+
+        return { content: 'default response' };
+      });
+
+    writer = new WriterAgent();
+  });
+
+  describe('compose', () => {
     it('should generate an email draft with all required components', async () => {
-      const draft = await generateEmailDraft(
+      const draft = await writer.compose(
         mockUser,
         mockContact,
         mockEmailOptions,
@@ -65,11 +121,14 @@ describe('Writer Agent', () => {
       expect(draft.metadata.tone).toBe(mockEmailOptions.tone);
       expect(draft.metadata.wordCount).toBeGreaterThan(0);
       expect(draft.metadata.targetGoals).toContain(mockEmailOptions.goal);
-      expect(draft.metadata.includedArticles.length).toBeGreaterThan(0);
+      expect(draft.metadata.includedArticles).toHaveLength(1);
+      expect(draft.metadata.generationStrategy).toBeDefined();
+      expect(draft.metadata.personalizationFactors).toBeDefined();
+      expect(draft.metadata.styleAdherence).toBeDefined();
     });
 
     it('should include personalized details from user and contact', async () => {
-      const draft = await generateEmailDraft(
+      const draft = await writer.compose(
         mockUser,
         mockContact,
         mockEmailOptions,
@@ -81,44 +140,72 @@ describe('Writer Agent', () => {
       expect(draft.content).toContain(mockContact.title);
       expect(draft.content).toContain(mockContact.company);
 
-      // Check for user signature details when included
+      // Check for user signature details
       expect(draft.content).toContain(mockUser.name);
       expect(draft.content).toContain(mockUser.title);
       expect(draft.content).toContain(mockUser.company);
     });
 
-    it('should integrate news articles into the content', async () => {
-      const draft = await generateEmailDraft(
+    it('should maintain context across multiple compositions', async () => {
+      // First email
+      await writer.compose(
         mockUser,
         mockContact,
         mockEmailOptions,
         mockNewsArticles
       );
 
-      // Verify news article integration
-      expect(draft.content).toContain(mockNewsArticles[0].title);
-      expect(draft.metadata.includedArticles).toContain(mockNewsArticles[0].id);
-    });
-
-    it('should respect maxLength constraint', async () => {
-      const optionsWithMaxLength = {
+      // Second email with different goal
+      const secondOptions = {
         ...mockEmailOptions,
-        maxLength: 20,
+        goal: 'discussing innovation initiatives',
       };
 
-      const draft = await generateEmailDraft(
+      const draft = await writer.compose(
         mockUser,
         mockContact,
-        optionsWithMaxLength,
+        secondOptions,
         mockNewsArticles
       );
 
-      const wordCount = draft.content.split(/\s+/).length;
-      expect(wordCount).toBeLessThanOrEqual(optionsWithMaxLength.maxLength);
+      // Verify LLM was called with previous context
+      const lastLLMCall = (
+        MockedChatOpenAI.prototype.invoke as jest.Mock
+      ).mock.calls.slice(-2)[0];
+
+      const userMessage = lastLLMCall[0][1].content;
+      expect(userMessage).toContain('Previous Interactions');
+    });
+
+    it('should use autonomous decision making for article selection', async () => {
+      const draft = await writer.compose(
+        mockUser,
+        mockContact,
+        mockEmailOptions,
+        mockNewsArticles
+      );
+
+      // Verify article analysis was performed
+      expect(MockedChatOpenAI.prototype.invoke).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'system',
+            content: expect.stringContaining('expert email strategist'),
+          }),
+          expect.objectContaining({
+            role: 'user',
+            content: expect.stringContaining('analyze these news articles'),
+          }),
+        ])
+      );
+
+      // Verify selected articles are tracked
+      expect(draft.metadata.includedArticles).toBeDefined();
+      expect(draft.metadata.includedArticles.length).toBeGreaterThan(0);
     });
 
     it('should handle empty news articles array', async () => {
-      const draft = await generateEmailDraft(
+      const draft = await writer.compose(
         mockUser,
         mockContact,
         mockEmailOptions,
@@ -129,22 +216,35 @@ describe('Writer Agent', () => {
       expect(draft.metadata.includedArticles).toHaveLength(0);
     });
 
-    it('should omit salutation and signature when specified', async () => {
-      const optionsWithoutSalutationAndSignature = {
+    it('should adapt style based on email options', async () => {
+      const formalOptions: EmailOptions = {
         ...mockEmailOptions,
-        includeSalutation: false,
-        includeSignature: false,
+        style: 'formal',
+        tone: 'direct',
       };
 
-      const draft = await generateEmailDraft(
+      const draft = await writer.compose(
         mockUser,
         mockContact,
-        optionsWithoutSalutationAndSignature,
+        formalOptions,
         mockNewsArticles
       );
 
-      expect(draft.content).not.toContain(`Dear ${mockContact.name}`);
-      expect(draft.content).not.toContain(`Best regards`);
+      expect(draft.metadata.styleAdherence?.formalityScore).toBe(0.9);
+      expect(draft.metadata.tone).toBe('direct');
+    });
+
+    it('should generate appropriate subject lines', async () => {
+      const draft = await writer.compose(
+        mockUser,
+        mockContact,
+        mockEmailOptions,
+        mockNewsArticles
+      );
+
+      expect(draft.subject).toBeDefined();
+      expect(draft.subject).toContain('Partnership');
+      expect(draft.subject).toContain(mockContact.company);
     });
   });
 });

@@ -27,8 +27,12 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@langchain/core": "^0.3.40",
+    "@langchain/openai": "^0.4.4",
     "@types/uuid": "^10.0.0",
+    "axios": "^1.7.9",
     "dotenv": "^16.4.4",
+    "langchain": "^0.3.19",
     "uuid": "^11.1.0"
   }
 }
