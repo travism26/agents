@@ -8,7 +8,10 @@
     "test:coverage": "jest --coverage",
     "test:models": "jest src/tests/models",
     "test:queues": "jest src/tests/queues",
-    "test:routes": "jest src/tests/routes"
+    "test:routes": "jest src/tests/routes",
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/server.js"
   },
   "keywords": [],
   "author": "",
