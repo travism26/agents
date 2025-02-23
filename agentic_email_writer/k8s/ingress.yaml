@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentic-email-writer-ingress
+  namespace: agentic-email-writer
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: 'true'
+    nginx.ingress.kubernetes.io/proxy-body-size: '10m'
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '180'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '180'
+    # Security headers using individual annotations
+    nginx.ingress.kubernetes.io/x-frame-options: 'DENY'
+    nginx.ingress.kubernetes.io/x-content-type-options: 'nosniff'
+    nginx.ingress.kubernetes.io/x-xss-protection: '1; mode=block'
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: '10'
+    nginx.ingress.kubernetes.io/enable-cors: 'true'
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.agentic-email.example.com # Replace with actual domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agentic-email-writer
+                port:
+                  number: 3000
+  tls:
+    - hosts:
+        - api.agentic-email.example.com
+      secretName: agentic-email-tls # TLS secret name

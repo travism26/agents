@@ -7,12 +7,25 @@ metadata:
     app: redis
 spec:
   ports:
-  - port: 6379
-    targetPort: 6379
-    protocol: TCP
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
   selector:
     app: redis
-  clusterIP: None  # Headless service for StatefulSet
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: agentic-email-writer
+data:
+  redis.conf: |
+    appendonly yes
+    maxmemory 512mb
+    maxmemory-policy allkeys-lru
+    bind 0.0.0.0
 
 ---
 apiVersion: apps/v1
@@ -32,78 +45,52 @@ spec:
         app: redis
     spec:
       containers:
-      - name: redis
-        image: redis:7.0-alpine
-        command:
-          - redis-server
-          - "/redis-config/redis.conf"
-        ports:
-        - containerPort: 6379
-          protocol: TCP
+        - name: redis
+          image: redis:7.0-alpine
+          command:
+            - redis-server
+            - /redis-config/redis.conf
+          ports:
+            - containerPort: 6379
+              protocol: TCP
+          resources:
+            requests:
+              cpu: '100m'
+              memory: '256Mi'
+            limits:
+              cpu: '200m'
+              memory: '512Mi'
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+            - name: redis-config
+              mountPath: /redis-config
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: redis-config
+          configMap:
+            name: redis-config
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes: ['ReadWriteOnce']
         resources:
           requests:
-            cpu: "200m"
-            memory: "512Mi"
-          limits:
-            cpu: "500m"
-            memory: "1Gi"
-        volumeMounts:
-        - name: redis-data
-          mountPath: /data
-        - name: redis-config
-          mountPath: /redis-config
-        livenessProbe:
-          tcpSocket:
-            port: 6379
-          initialDelaySeconds: 15
-          periodSeconds: 20
-        readinessProbe:
-          exec:
-            command:
-            - redis-cli
-            - ping
-          initialDelaySeconds: 5
-          periodSeconds: 10
-      volumes:
-      - name: redis-config
-        configMap:
-          name: redis-config
-  volumeClaimTemplates:
-  - metadata:
-      name: redis-data
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      resources:
-        requests:
-          storage: 5Gi
-      storageClassName: standard
-
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: redis-config
-  namespace: agentic-email-writer
-data:
-  redis.conf: |
-    appendonly yes
-    maxmemory 768mb
-    maxmemory-policy allkeys-lru
-    save 900 1
-    save 300 10
-    save 60 10000
-    stop-writes-on-bgsave-error yes
-    rdbcompression yes
-    rdbchecksum yes
-    dir /data
-    requirepass ${REDIS_PASSWORD}
-
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: redis-secret
-  namespace: agentic-email-writer
-type: Opaque
-data:
-  password: cmVkaXNwYXNzd29yZA==  # redispassword (base64 encoded) - Change in production!
+            storage: 1Gi
+        storageClassName: hostpath

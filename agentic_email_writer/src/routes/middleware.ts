@@ -77,18 +77,21 @@ export const validateRequest = (schema: any) => {
   };
 };
 
-// Authentication middleware placeholder
-// TODO: Implement proper authentication
+// Demo authentication middleware
+// NOTE: This is a simplified version for demonstration purposes only.
+// In production, implement proper authentication with secure API key validation.
 export const authenticate = (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  // For now, just check if an API key is present
+  // For demo purposes, accept any non-empty string as API key
   const apiKey = req.headers['x-api-key'];
   if (!apiKey) {
-    throw new ApiError(401, 'API key is required');
+    throw new ApiError(
+      401,
+      'API key is required. For demo, use any non-empty string as key.'
+    );
   }
-  // TODO: Validate API key
   next();
 };

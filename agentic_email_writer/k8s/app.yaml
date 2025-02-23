@@ -7,14 +7,14 @@ metadata:
     app: agentic-email-writer
 spec:
   ports:
-  - port: 3000
-    targetPort: 3000
-    protocol: TCP
-    name: http
-  - port: 9090
-    targetPort: 9090
-    protocol: TCP
-    name: metrics
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+      name: http
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
+      name: metrics
   selector:
     app: agentic-email-writer
   type: ClusterIP
@@ -42,82 +42,77 @@ spec:
       labels:
         app: agentic-email-writer
       annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "9090"
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9090'
     spec:
       containers:
-      - name: agentic-email-writer
-        image: agentic-email-writer:latest  # Update with actual image repository
-        ports:
-        - containerPort: 3000
-          name: http
-        - containerPort: 9090
-          name: metrics
-        env:
-        - name: NODE_ENV
-          value: "production"
-        - name: PORT
-          value: "3000"
-        # MongoDB Configuration
-        - name: MONGODB_URI
-          valueFrom:
-            secretKeyRef:
-              name: app-secret
-              key: mongodb-uri
-        # Redis Configuration
-        - name: REDIS_HOST
-          value: "redis"
-        - name: REDIS_PORT
-          value: "6379"
-        - name: REDIS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: redis-secret
-              key: password
-        # API Keys and External Services
-        - name: PERPLEXITY_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: app-secret
-              key: perplexity-api-key
-        - name: OPENAI_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: app-secret
-              key: openai-api-key
-        resources:
-          requests:
-            cpu: "500m"
-            memory: "1Gi"
-          limits:
-            cpu: "1"
-            memory: "2Gi"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 30
-          periodSeconds: 30
-          timeoutSeconds: 5
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          timeoutSeconds: 5
+        - name: agentic-email-writer
+          image: travism26/agentic-email-writer:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+              name: http
+            - containerPort: 9090
+              name: metrics
+          env:
+            - name: NODE_ENV
+              value: 'production'
+            - name: PORT
+              value: '3000'
+            # MongoDB Configuration
+            - name: MONGODB_URI
+              value: 'mongodb://mongodb.agentic-email-writer:27017/agentic_email_writer'
+            # Redis Configuration
+            - name: REDIS_HOST
+              value: 'redis.agentic-email-writer'
+            - name: REDIS_PORT
+              value: '6379'
+            - name: REDIS_PASSWORD
+              value: ''
+            # API Keys and External Services
+            - name: PERPLEXITY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: perplexity-api-key
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: openai-api-key
+          resources:
+            requests:
+              cpu: '200m'
+              memory: '512Mi'
+            limits:
+              cpu: '500m'
+              memory: '1Gi'
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                  - agentic-email-writer
-              topologyKey: kubernetes.io/hostname
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - agentic-email-writer
+                topologyKey: kubernetes.io/hostname
 
 ---
 apiVersion: v1
@@ -127,9 +122,8 @@ metadata:
   namespace: agentic-email-writer
 type: Opaque
 data:
-  mongodb-uri: bW9uZ29kYjovL2FkbWluOnBhc3N3b3JkQG1vbmdvZGI6MjcwMTcvYWdlbnRpYy1lbWFpbC13cml0ZXI=  # Change in production!
-  perplexity-api-key: eW91ci1wZXJwbGV4aXR5LWFwaS1rZXk=  # Change in production!
-  openai-api-key: eW91ci1vcGVuYWktYXBpLWtleQ==  # Change in production!
+  perplexity-api-key: cHBseC01MDRlYzkyM2VhNDVkNjQyNDEwNDkzOTRkYWNkNDk2OTBlM2UzZTM1YTM2MmQyNzU= # Base64 encoded placeholder - replace with actual key
+  openai-api-key: c2stVTJ0QlNENWdJUDJjeUpsUDllcnpUM0JsYmtGSnd6ZGNQTE8zNjJuWGUyQ0NJRjN2 # Base64 encoded placeholder - replace with actual key
 
 ---
 apiVersion: autoscaling/v2
@@ -145,18 +139,18 @@ spec:
   minReplicas: 2
   maxReplicas: 10
   metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
 
 ---
 apiVersion: policy/v1

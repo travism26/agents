@@ -7,9 +7,9 @@ metadata:
     app: prometheus
 spec:
   ports:
-  - port: 9090
-    targetPort: 9090
-    protocol: TCP
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
   selector:
     app: prometheus
   type: ClusterIP
@@ -32,38 +32,38 @@ spec:
         app: prometheus
     spec:
       containers:
-      - name: prometheus
-        image: prom/prometheus:v2.45.0
-        args:
-        - "--config.file=/etc/prometheus/prometheus.yml"
-        - "--storage.tsdb.path=/prometheus"
-        - "--storage.tsdb.retention.time=15d"
-        ports:
-        - containerPort: 9090
+        - name: prometheus
+          image: prom/prometheus:v2.45.0
+          args:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--storage.tsdb.retention.time=15d'
+          ports:
+            - containerPort: 9090
+          resources:
+            requests:
+              cpu: '200m'
+              memory: '512Mi'
+            limits:
+              cpu: '500m'
+              memory: '1Gi'
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus
+            - name: prometheus-data
+              mountPath: /prometheus
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
+  volumeClaimTemplates:
+    - metadata:
+        name: prometheus-data
+      spec:
+        accessModes: ['ReadWriteOnce']
         resources:
           requests:
-            cpu: "500m"
-            memory: "2Gi"
-          limits:
-            cpu: "1"
-            memory: "4Gi"
-        volumeMounts:
-        - name: prometheus-config
-          mountPath: /etc/prometheus
-        - name: prometheus-data
-          mountPath: /prometheus
-      volumes:
-      - name: prometheus-config
-        configMap:
-          name: prometheus-config
-  volumeClaimTemplates:
-  - metadata:
-      name: prometheus-data
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      resources:
-        requests:
-          storage: 10Gi
+            storage: 1Gi
 
 ---
 apiVersion: v1
@@ -99,9 +99,9 @@ metadata:
     app: grafana
 spec:
   ports:
-  - port: 3000
-    targetPort: 3000
-    protocol: TCP
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
   selector:
     app: grafana
   type: ClusterIP
@@ -123,44 +123,43 @@ spec:
         app: grafana
     spec:
       containers:
-      - name: grafana
-        image: grafana/grafana:9.5.2
-        ports:
-        - containerPort: 3000
-        env:
-        - name: GF_SECURITY_ADMIN_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: grafana-secret
-              key: admin-password
-        resources:
-          requests:
-            cpu: "200m"
-            memory: "256Mi"
-          limits:
-            cpu: "500m"
-            memory: "512Mi"
-        volumeMounts:
-        - name: grafana-storage
-          mountPath: /var/lib/grafana
-        - name: grafana-datasources
-          mountPath: /etc/grafana/provisioning/datasources
-        - name: grafana-dashboards-config
-          mountPath: /etc/grafana/provisioning/dashboards
-        - name: grafana-dashboards
-          mountPath: /var/lib/grafana/dashboards
+        - name: grafana
+          image: grafana/grafana:9.5.2
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: 'admin'
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: 'admin'
+          resources:
+            requests:
+              cpu: '100m'
+              memory: '128Mi'
+            limits:
+              cpu: '200m'
+              memory: '256Mi'
+          volumeMounts:
+            - name: grafana-storage
+              mountPath: /var/lib/grafana
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: grafana-dashboards-config
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: grafana-dashboards
+              mountPath: /var/lib/grafana/dashboards
       volumes:
-      - name: grafana-storage
-        emptyDir: {}
-      - name: grafana-datasources
-        configMap:
-          name: grafana-datasources
-      - name: grafana-dashboards-config
-        configMap:
-          name: grafana-dashboards-config
-      - name: grafana-dashboards
-        configMap:
-          name: grafana-dashboards
+        - name: grafana-storage
+          emptyDir: {}
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
+        - name: grafana-dashboards-config
+          configMap:
+            name: grafana-dashboards-config
+        - name: grafana-dashboards
+          configMap:
+            name: grafana-dashboards
 
 ---
 apiVersion: v1
@@ -320,13 +319,3 @@ data:
       "version": 0,
       "weekStart": ""
     }
-
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: grafana-secret
-  namespace: agentic-email-writer
-type: Opaque
-data:
-  admin-password: YWRtaW4=  # admin (base64 encoded) - Change in production!

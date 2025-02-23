@@ -4,8 +4,17 @@ import { QueueName } from './config';
 
 export interface ResearcherJobData {
   generatedEmailId: string;
-  contactId: string;
-  companyId: string;
+  contact: {
+    name: string;
+    title: string;
+    company: {
+      name: string;
+      industry?: string;
+      website?: string;
+    };
+    email?: string;
+    linkedIn?: string;
+  };
   timeframe?: {
     startDate?: Date;
     endDate?: Date;

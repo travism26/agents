@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { createServer } from '../../server';
 import { Express } from 'express';
-import { GeneratedEmail, Company, Contact, User } from '../../models';
+import { GeneratedEmail } from '../../models';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 import '../mocks/redis.mock';
@@ -16,11 +16,25 @@ import {
 
 describe('Email Generation End-to-End Tests', () => {
   let app: Express;
-  let testCompany: any;
-  let testContact: any;
-  let testUser: any;
-
   let mongod: MongoMemoryServer;
+
+  const testUser = {
+    name: 'Test User',
+    title: 'Sales Manager',
+    company: 'Acme Corp',
+  };
+
+  const testContact = {
+    name: 'John Doe',
+    title: 'CEO',
+    company: {
+      name: 'Tech Corp',
+      industry: 'Technology',
+      website: 'https://techcorp.com',
+    },
+    email: 'john@techcorp.com',
+    linkedIn: 'linkedin.com/in/johndoe',
+  };
 
   beforeAll(async () => {
     // Only create and connect if not already connected
@@ -41,38 +55,10 @@ describe('Email Generation End-to-End Tests', () => {
 
   beforeEach(async () => {
     app = await createServer();
-
-    // Create test data
-    testCompany = await Company.create({
-      name: 'Test Company',
-      details: {
-        industry: 'Technology',
-        size: '1000+',
-        location: 'San Francisco',
-      },
-    });
-
-    testContact = await Contact.create({
-      name: 'John Doe',
-      title: 'CEO',
-      company: testCompany._id,
-    });
-
-    testUser = await User.create({
-      name: 'Test User',
-      title: 'Sales Manager',
-      company: testCompany._id,
-    });
   });
 
   afterEach(async () => {
-    // Clean up test data
-    await Company.deleteMany({});
-    await Contact.deleteMany({});
-    await User.deleteMany({});
     await GeneratedEmail.deleteMany({});
-
-    // No need to close queue connections as they are mocked
   });
 
   describe('Complete Email Generation Flow', () => {
@@ -81,22 +67,32 @@ describe('Email Generation End-to-End Tests', () => {
       const initialEmailCount = await emailGenerationCounter.get();
 
       // Submit email generation request
-      const response = await request(app).post('/api/generate-email').send({
-        userId: testUser._id,
-        contactId: testContact._id,
-        companyId: testCompany._id,
-      });
+      const response = await request(app)
+        .post('/api/generate-email/generate')
+        .send({
+          user: testUser,
+          contact: testContact,
+          options: {
+            tone: 'formal',
+            maxLength: 500,
+            includeCta: true,
+          },
+        });
 
       expect(response.status).toBe(202);
-      expect(response.body).toHaveProperty('jobId');
+      expect(response.body.data).toHaveProperty('jobId');
+      expect(response.body.data).toHaveProperty('emailId');
+      expect(response.body.data).toHaveProperty('status', 'pending');
+      expect(response.body.data).toHaveProperty('estimatedCompletion');
 
-      const generatedEmail = await GeneratedEmail.findOne({
-        user: testUser._id,
-        contact: testContact._id,
-      });
+      const generatedEmail = await GeneratedEmail.findById(
+        response.body.data.emailId
+      );
 
       expect(generatedEmail).toBeTruthy();
       expect(generatedEmail?.status).toBe('pending');
+      expect(generatedEmail?.user).toMatchObject(testUser);
+      expect(generatedEmail?.contact).toMatchObject(testContact);
 
       // Verify metrics were updated
       const updatedEmailCount = await emailGenerationCounter.get();
@@ -119,13 +115,19 @@ describe('Email Generation End-to-End Tests', () => {
 
     it('should handle errors gracefully and update metrics', async () => {
       // Submit invalid request
-      const response = await request(app).post('/api/generate-email').send({
-        userId: 'invalid-id',
-        contactId: 'invalid-id',
-        companyId: 'invalid-id',
-      });
+      const response = await request(app)
+        .post('/api/generate-email/generate')
+        .send({
+          user: {
+            // Missing required fields
+          },
+          contact: {
+            // Missing required fields
+          },
+        });
 
       expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
 
       // Verify error metrics were updated
       const errorMetrics = await emailGenerationCounter.get();
@@ -143,11 +145,17 @@ describe('Email Generation End-to-End Tests', () => {
       const promises = Array(requests)
         .fill(null)
         .map(() =>
-          request(app).post('/api/generate-email').send({
-            userId: testUser._id,
-            contactId: testContact._id,
-            companyId: testCompany._id,
-          })
+          request(app)
+            .post('/api/generate-email/generate')
+            .send({
+              user: testUser,
+              contact: testContact,
+              options: {
+                tone: 'formal',
+                maxLength: 500,
+                includeCta: true,
+              },
+            })
         );
 
       const responses = await Promise.all(promises);
@@ -156,7 +164,9 @@ describe('Email Generation End-to-End Tests', () => {
       // Verify all requests were successful
       responses.forEach((response) => {
         expect(response.status).toBe(202);
-        expect(response.body).toHaveProperty('jobId');
+        expect(response.body.data).toHaveProperty('jobId');
+        expect(response.body.data).toHaveProperty('emailId');
+        expect(response.body.data).toHaveProperty('status', 'pending');
       });
 
       // Verify performance metrics
@@ -166,6 +176,70 @@ describe('Email Generation End-to-End Tests', () => {
       // Verify queue sizes were updated correctly
       const queueSizes = await queueSizeGauge.get();
       expect(queueSizes).toBeTruthy();
+
+      // Verify all emails were created in database
+      const emailCount = await GeneratedEmail.countDocuments();
+      expect(emailCount).toBe(requests);
+    });
+
+    it('should handle the complete email generation lifecycle', async () => {
+      // Submit generation request
+      const response = await request(app)
+        .post('/api/generate-email/generate')
+        .send({
+          user: testUser,
+          contact: testContact,
+          options: {
+            tone: 'formal',
+            maxLength: 500,
+            includeCta: true,
+          },
+        });
+
+      expect(response.status).toBe(202);
+      const emailId = response.body.data.emailId;
+
+      // Check initial status
+      const statusResponse = await request(app).get(
+        `/api/generate-email/status/${emailId}`
+      );
+
+      expect(statusResponse.status).toBe(200);
+      expect(statusResponse.body.data).toHaveProperty('status', 'pending');
+      expect(statusResponse.body.data.user).toMatchObject(testUser);
+      expect(statusResponse.body.data.contact).toMatchObject(testContact);
+
+      // Update email to completed state
+      await GeneratedEmail.findByIdAndUpdate(emailId, {
+        status: 'completed',
+        finalDraft: {
+          subject: 'Test Subject',
+          body: 'Test Body',
+          version: 1,
+          createdAt: new Date(),
+          reviewStatus: 'approved',
+        },
+        articles: [
+          {
+            title: 'Test Article',
+            url: 'https://example.com',
+            publishedDate: new Date(),
+            summary: 'Test Summary',
+          },
+        ],
+      });
+
+      // Get final draft
+      const finalResponse = await request(app).get(
+        `/api/generate-email/final/${emailId}`
+      );
+
+      expect(finalResponse.status).toBe(200);
+      expect(finalResponse.body.data).toHaveProperty('status', 'completed');
+      expect(finalResponse.body.data).toHaveProperty('finalDraft');
+      expect(finalResponse.body.data).toHaveProperty('articles');
+      expect(finalResponse.body.data.user).toMatchObject(testUser);
+      expect(finalResponse.body.data.contact).toMatchObject(testContact);
     });
   });
 });

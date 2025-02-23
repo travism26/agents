@@ -37,20 +37,30 @@ POST /generate-email
 
 ```json
 {
-  "userId": "string",
+  "user": {
+    "name": "string",
+    "title": "string",
+    "company": "string"
+  },
   "contact": {
     "name": "string",
     "title": "string",
     "company": {
       "name": "string",
-      "industry": "string"
-    }
+      "industry": "string (optional)",
+      "website": "string (optional)"
+    },
+    "email": "string (optional)",
+    "linkedIn": "string (optional)"
   },
-  "preferences": {
-    "style": "formal" | "casual" | "friendly",
-    "cefrLevel": "B1" | "B2" | "C1" | "C2",
-    "maxLength": number,
-    "tone": "professional" | "enthusiastic" | "direct"
+  "timeframe": {
+    "startDate": "string (ISO 8601, optional)",
+    "endDate": "string (ISO 8601, optional)"
+  },
+  "options": {
+    "tone": "formal" | "casual" | "friendly",
+    "maxLength": "number (100-2000)",
+    "includeCta": "boolean"
   }
 }
 ```
@@ -59,61 +69,108 @@ POST /generate-email
 
 ```json
 {
-  "jobId": "string",
-  "status": "pending",
-  "estimatedCompletionTime": "string (ISO 8601)"
+  "message": "Email generation started",
+  "data": {
+    "jobId": "string",
+    "emailId": "string",
+    "status": "pending",
+    "estimatedCompletion": "string (ISO 8601)"
+  }
 }
 ```
 
 #### Status Codes
 
-- 201: Job created successfully
+- 202: Email generation started
 - 400: Invalid request body
 - 401: Unauthorized
 - 429: Rate limit exceeded
 - 500: Internal server error
 
-### Check Job Status
+### Get Email Status
 
-Retrieves the status of an email generation job.
+Retrieves the status of an email generation process.
 
 ```http
-GET /job-status/:jobId
+GET /status/:emailId
 ```
 
 #### Response
 
 ```json
 {
-  "jobId": "string",
-  "status": "pending" | "researching" | "writing" | "reviewing" | "completed" | "failed",
-  "progress": {
-    "currentPhase": "string",
-    "percentComplete": number,
-    "estimatedTimeRemaining": "string"
-  },
-  "result": {
-    "email": {
+  "data": {
+    "status": "pending" | "researching" | "writing" | "reviewing" | "completed" | "failed",
+    "user": {
+      "name": "string",
+      "title": "string",
+      "company": "string"
+    },
+    "contact": {
+      "name": "string",
+      "title": "string",
+      "company": {
+        "name": "string",
+        "industry": "string",
+        "website": "string"
+      },
+      "email": "string",
+      "linkedIn": "string"
+    },
+    "createdAt": "string (ISO 8601)",
+    "completedAt": "string (ISO 8601)",
+    "failedReason": "string",
+    "draftsCount": "number",
+    "articlesCount": "number",
+    "hasFinalDraft": "boolean"
+  }
+}
+```
+
+### Get Final Email Draft
+
+Retrieves the final email draft if available.
+
+```http
+GET /final/:emailId
+```
+
+#### Response
+
+```json
+{
+  "data": {
+    "status": "completed",
+    "user": {
+      "name": "string",
+      "title": "string",
+      "company": "string"
+    },
+    "contact": {
+      "name": "string",
+      "title": "string",
+      "company": {
+        "name": "string",
+        "industry": "string",
+        "website": "string"
+      },
+      "email": "string",
+      "linkedIn": "string"
+    },
+    "finalDraft": {
       "subject": "string",
       "body": "string",
-      "metadata": {
-        "researchTime": number,
-        "writingTime": number,
-        "reviewTime": number,
-        "revisionCount": number
-      }
+      "version": "number",
+      "createdAt": "string (ISO 8601)",
+      "reviewStatus": "approved"
     },
-    "sources": [{
+    "articles": [{
       "title": "string",
       "url": "string",
-      "publishedDate": "string",
-      "relevanceScore": number
+      "publishedDate": "string (ISO 8601)",
+      "summary": "string",
+      "relevanceScore": "number (0-1)"
     }]
-  },
-  "error": {
-    "code": "string",
-    "message": "string",
-    "details": "string"
   }
 }
 ```
@@ -121,7 +178,7 @@ GET /job-status/:jobId
 #### Status Codes
 
 - 200: Success
-- 404: Job not found
+- 404: Email not found or final draft not available
 - 401: Unauthorized
 - 500: Internal server error
 
@@ -134,34 +191,15 @@ GET /job-status/:jobId
 | AUTH_003 | Insufficient permissions |
 | RATE_001 | Rate limit exceeded |
 | RATE_002 | Daily limit exceeded |
-| JOB_001 | Invalid job ID |
-| JOB_002 | Job processing failed |
 | VAL_001 | Invalid request parameters |
 | VAL_002 | Missing required fields |
 | SYS_001 | Internal system error |
 
-## Webhooks
-
-You can configure webhooks to receive notifications about job status changes:
-
-```http
-POST /webhooks/configure
-```
-
-```json
-{
-  "url": "string",
-  "events": ["job.completed", "job.failed"],
-  "secret": "string"
-}
-```
-
 ## Best Practices
 
-1. **Polling Frequency**: When checking job status, implement exponential backoff starting at 5 seconds.
+1. **Polling Frequency**: When checking email status, implement exponential backoff starting at 5 seconds.
 2. **Error Handling**: Always check the error field in responses for detailed error information.
 3. **Rate Limiting**: Implement client-side rate limiting to prevent hitting API limits.
-4. **Webhook Security**: Always verify webhook signatures using your secret key.
 
 ## Examples
 
@@ -172,28 +210,34 @@ curl -X POST https://your-domain/api/generate-email \
   -H "Authorization: Bearer your-token" \
   -H "Content-Type: application/json" \
   -d '{
-    "userId": "user123",
-    "contact": {
+    "user": {
       "name": "John Smith",
+      "title": "Sales Director",
+      "company": "Acme Corp"
+    },
+    "contact": {
+      "name": "Jane Doe",
       "title": "CTO",
       "company": {
         "name": "Tech Corp",
-        "industry": "Software"
-      }
+        "industry": "Software",
+        "website": "https://techcorp.com"
+      },
+      "email": "jane@techcorp.com",
+      "linkedIn": "linkedin.com/in/janedoe"
     },
-    "preferences": {
-      "style": "formal",
-      "cefrLevel": "C1",
-      "maxLength": 300,
-      "tone": "professional"
+    "options": {
+      "tone": "formal",
+      "maxLength": 500,
+      "includeCta": true
     }
   }'
 ```
 
-### Check Job Status
+### Check Email Status
 
 ```curl
-curl https://your-domain/api/job-status/job123 \
+curl https://your-domain/api/status/email123 \
   -H "Authorization: Bearer your-token"
 ```
 

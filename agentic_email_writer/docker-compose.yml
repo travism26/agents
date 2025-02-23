@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6.0
+    environment:
+      MONGO_INITDB_DATABASE: agentic_email_writer
+    command: mongod --bind_ip_all
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  redis:
+    image: redis:7.0-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - MONGODB_URI=mongodb://mongodb:27017/agentic_email_writer
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PROMETHEUS_PORT=9090
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - mongodb
+      - redis
+      - prometheus
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run dev
+
+volumes:
+  mongodb_data:
+  redis_data:
+  prometheus_data:

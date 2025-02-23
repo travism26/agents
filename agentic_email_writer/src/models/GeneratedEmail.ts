@@ -1,6 +1,23 @@
 import mongoose, { Document, Schema } from 'mongoose';
-import { IContact } from './Contact';
-import { IUser } from './User';
+export interface IUserDetails {
+  name: string;
+  title: string;
+  company: string;
+}
+
+export interface ICompanyDetails {
+  name: string;
+  industry?: string;
+  website?: string;
+}
+
+export interface IContactDetails {
+  name: string;
+  title: string;
+  company: ICompanyDetails;
+  email?: string;
+  linkedIn?: string;
+}
 
 export interface INewsArticle {
   title: string;
@@ -20,8 +37,8 @@ export interface IEmailDraft {
 }
 
 export interface IGeneratedEmail extends Document {
-  user: IUser['_id'];
-  contact: IContact['_id'];
+  user: IUserDetails;
+  contact: IContactDetails;
   status:
     | 'pending'
     | 'researching'
@@ -37,6 +54,76 @@ export interface IGeneratedEmail extends Document {
   updatedAt: Date;
   completedAt?: Date;
 }
+
+const UserDetailsSchema = new Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    company: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+  },
+  { _id: false }
+);
+
+const CompanyDetailsSchema = new Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    industry: {
+      type: String,
+      trim: true,
+    },
+    website: {
+      type: String,
+      trim: true,
+    },
+  },
+  { _id: false }
+);
+
+const ContactDetailsSchema = new Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    company: {
+      type: CompanyDetailsSchema,
+      required: true,
+    },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email address'],
+    },
+    linkedIn: {
+      type: String,
+      trim: true,
+    },
+  },
+  { _id: false }
+);
 
 const NewsArticleSchema = new Schema(
   {
@@ -97,13 +184,11 @@ const EmailDraftSchema = new Schema(
 const GeneratedEmailSchema = new Schema(
   {
     user: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
+      type: UserDetailsSchema,
       required: true,
     },
     contact: {
-      type: Schema.Types.ObjectId,
-      ref: 'Contact',
+      type: ContactDetailsSchema,
       required: true,
     },
     status: {
@@ -130,10 +215,6 @@ const GeneratedEmailSchema = new Schema(
     timestamps: true,
   }
 );
-
-// Indexes for efficient querying
-GeneratedEmailSchema.index({ user: 1, status: 1 });
-GeneratedEmailSchema.index({ contact: 1, createdAt: -1 });
 
 export const GeneratedEmail = mongoose.model<IGeneratedEmail>(
   'GeneratedEmail',

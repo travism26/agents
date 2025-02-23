@@ -1,66 +1,47 @@
-import mongoose, { Types } from 'mongoose';
-import {
-  GeneratedEmail,
-  User,
-  Contact,
-  Company,
-  IUser,
-  IContact,
-  ICompany,
-  IGeneratedEmail,
-} from '../../models';
+import mongoose from 'mongoose';
+import { GeneratedEmail, IGeneratedEmail } from '../../models';
 
 describe('GeneratedEmail Model', () => {
-  let testUser: IUser & { _id: Types.ObjectId };
-  let testContact: IContact & { _id: Types.ObjectId };
-  let testCompany: ICompany & { _id: Types.ObjectId };
+  const testUser = {
+    name: 'John Doe',
+    title: 'Sales Manager',
+    company: 'Acme Corp'
+  };
+
+  const testContact = {
+    name: 'Jane Smith',
+    title: 'CTO',
+    company: {
+      name: 'Tech Corp',
+      industry: 'Technology',
+      website: 'https://techcorp.com'
+    },
+    email: 'jane@techcorp.com',
+    linkedIn: 'linkedin.com/in/janesmith'
+  };
 
   beforeEach(async () => {
-    // Create test company
-    testCompany = (await Company.create({
-      name: 'Test Company',
-      details: { industry: 'Technology' },
-    })) as ICompany & { _id: Types.ObjectId };
-
-    // Create test user
-    testUser = (await User.create({
-      name: 'John Doe',
-      title: 'Sales Manager',
-      company: 'Acme Corp',
-    })) as IUser & { _id: Types.ObjectId };
-
-    // Create test contact
-    testContact = (await Contact.create({
-      name: 'Jane Smith',
-      title: 'CTO',
-      company: testCompany._id,
-    })) as IContact & { _id: Types.ObjectId };
+    await GeneratedEmail.deleteMany({});
   });
 
-  afterEach(async () => {
-    await GeneratedEmail.deleteMany({});
-    await Contact.deleteMany({});
-    await Company.deleteMany({});
-    await User.deleteMany({});
+  afterAll(async () => {
+    await mongoose.connection.close();
   });
 
   it('should create a new generated email successfully', async () => {
     const validGeneratedEmail = {
-      user: testUser._id,
-      contact: testContact._id,
+      user: testUser,
+      contact: testContact,
       status: 'pending',
     };
 
-    const generatedEmail = (await GeneratedEmail.create(
+    const generatedEmail = await GeneratedEmail.create(
       validGeneratedEmail
-    )) as IGeneratedEmail & { _id: Types.ObjectId };
+    ) as IGeneratedEmail;
+
     expect(generatedEmail._id).toBeDefined();
-    expect((generatedEmail.user as Types.ObjectId).toString()).toBe(
-      testUser._id.toString()
-    );
-    expect((generatedEmail.contact as Types.ObjectId).toString()).toBe(
-      testContact._id.toString()
-    );
+    expect(generatedEmail.user).toMatchObject(testUser);
+    expect(generatedEmail.contact).toMatchObject(testContact);
     expect(generatedEmail.status).toBe('pending');
     expect(generatedEmail.articles).toHaveLength(0);
     expect(generatedEmail.drafts).toHaveLength(0);
@@ -70,8 +51,8 @@ describe('GeneratedEmail Model', () => {
 
   it('should add articles to generated email', async () => {
     const generatedEmail = await GeneratedEmail.create({
-      user: testUser._id,
-      contact: testContact._id,
+      user: testUser,
+      contact: testContact,
       status: 'researching',
     });
 
@@ -105,8 +86,8 @@ describe('GeneratedEmail Model', () => {
 
   it('should add drafts to generated email', async () => {
     const generatedEmail = await GeneratedEmail.create({
-      user: testUser._id,
-      contact: testContact._id,
+      user: testUser,
+      contact: testContact,
       status: 'writing',
     });
 
@@ -131,8 +112,8 @@ describe('GeneratedEmail Model', () => {
 
   it('should update status and set final draft', async () => {
     const generatedEmail = await GeneratedEmail.create({
-      user: testUser._id,
-      contact: testContact._id,
+      user: testUser,
+      contact: testContact,
       status: 'reviewing',
     });
 
@@ -162,8 +143,8 @@ describe('GeneratedEmail Model', () => {
 
   it('should handle failure status with reason', async () => {
     const generatedEmail = await GeneratedEmail.create({
-      user: testUser._id,
-      contact: testContact._id,
+      user: testUser,
+      contact: testContact,
       status: 'researching',
     });
 
@@ -181,18 +162,56 @@ describe('GeneratedEmail Model', () => {
     expect(updatedEmail?.failedReason).toBe(failedReason);
   });
 
-  it('should populate user and contact references', async () => {
-    const generatedEmail = await GeneratedEmail.create({
-      user: testUser._id,
-      contact: testContact._id,
+  it('should validate required user fields', async () => {
+    const invalidEmail = {
+      user: {
+        // Missing required fields
+      },
+      contact: testContact,
       status: 'pending',
-    });
+    };
 
-    const populatedEmail = await GeneratedEmail.findById(generatedEmail._id)
-      .populate<{ user: IUser }>('user')
-      .populate<{ contact: IContact }>('contact');
+    await expect(GeneratedEmail.create(invalidEmail)).rejects.toThrow();
+  });
 
-    expect(populatedEmail?.user.name).toBe(testUser.name);
-    expect(populatedEmail?.contact.name).toBe(testContact.name);
+  it('should validate required contact fields', async () => {
+    const invalidEmail = {
+      user: testUser,
+      contact: {
+        // Missing required fields
+      },
+      status: 'pending',
+    };
+
+    await expect(GeneratedEmail.create(invalidEmail)).rejects.toThrow();
+  });
+
+  it('should validate contact company fields', async () => {
+    const invalidEmail = {
+      user: testUser,
+      contact: {
+        ...testContact,
+        company: {
+          // Missing required name field
+          industry: 'Technology',
+        },
+      },
+      status: 'pending',
+    };
+
+    await expect(GeneratedEmail.create(invalidEmail)).rejects.toThrow();
+  });
+
+  it('should validate email format if provided', async () => {
+    const invalidEmail = {
+      user: testUser,
+      contact: {
+        ...testContact,
+        email: 'invalid-email', // Invalid email format
+      },
+      status: 'pending',
+    };
+
+    await expect(GeneratedEmail.create(invalidEmail)).rejects.toThrow();
   });
 });

@@ -16,6 +16,16 @@ jest.mock('../../models', () => ({
 describe('ResearcherQueue', () => {
   let queue: ResearcherQueue;
 
+  const testContact = {
+    name: 'John Doe',
+    title: 'CTO',
+    company: {
+      name: 'Test Company',
+      industry: 'Technology',
+      website: 'https://testcompany.com'
+    }
+  };
+
   beforeEach(() => {
     queue = ResearcherQueue.getInstance();
   });
@@ -40,8 +50,11 @@ describe('ResearcherQueue', () => {
         id: 'test-job-id',
         data: {
           generatedEmailId: 'email-id',
-          contactId: 'contact-id',
-          companyId: 'company-id',
+          contact: testContact,
+          timeframe: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2025-02-01')
+          }
         },
       } as Job;
 
@@ -58,8 +71,11 @@ describe('ResearcherQueue', () => {
         id: 'test-job-id',
         data: {
           generatedEmailId: 'email-id',
-          contactId: 'contact-id',
-          companyId: 'company-id',
+          contact: testContact,
+          timeframe: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2025-02-01')
+          }
         },
       } as Job;
       const mockDone = jest.fn();

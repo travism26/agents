@@ -16,8 +16,22 @@ const router = Router();
 
 // Validation schema for email generation request
 const generateEmailSchema = Joi.object({
-  userId: Joi.string().required(),
-  contactId: Joi.string().required(),
+  user: Joi.object({
+    name: Joi.string().required(),
+    title: Joi.string().required(),
+    company: Joi.string().required()
+  }).required(),
+  contact: Joi.object({
+    name: Joi.string().required(),
+    title: Joi.string().required(),
+    company: Joi.object({
+      name: Joi.string().required(),
+      industry: Joi.string(),
+      website: Joi.string()
+    }).required(),
+    email: Joi.string().email(),
+    linkedIn: Joi.string()
+  }).required(),
   timeframe: Joi.object({
     startDate: Joi.date(),
     endDate: Joi.date().greater(Joi.ref('startDate')),
@@ -35,24 +49,22 @@ router.post(
   authenticate,
   validateRequest(generateEmailSchema),
   asyncHandler(async (req, res) => {
-    const { userId, contactId, timeframe, options } = req.body;
+    const { user, contact, timeframe, options } = req.body;
 
-    // Verify contact exists and get company
-    const contact = await Contact.findById(contactId).populate<{
-      company: ICompany;
-    }>('company');
-    if (!contact) {
-      return res.status(404).json({
-        error: {
-          message: 'Contact not found',
-        },
-      });
-    }
-
-    // Create a new GeneratedEmail record
+    // Create a new GeneratedEmail record with embedded user and contact details
     const generatedEmail = await GeneratedEmail.create({
-      user: userId,
-      contact: contactId,
+      user: {
+        name: user.name,
+        title: user.title,
+        company: user.company
+      },
+      contact: {
+        name: contact.name,
+        title: contact.title,
+        company: contact.company,
+        email: contact.email,
+        linkedIn: contact.linkedIn
+      },
       status: 'pending',
     });
 
@@ -61,8 +73,11 @@ router.post(
       generatedEmailId: (
         generatedEmail._id as mongoose.Types.ObjectId
       ).toString(),
-      contactId,
-      companyId: (contact.company._id as mongoose.Types.ObjectId).toString(),
+      contact: {
+        name: contact.name,
+        title: contact.title,
+        company: contact.company
+      },
       timeframe,
     });
 
@@ -85,9 +100,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const { emailId } = req.params;
 
-    const email = await GeneratedEmail.findById(emailId)
-      .populate<{ contact: IContact }>('contact')
-      .select('-drafts.body'); // Don't send draft content for performance
+    const email = await GeneratedEmail.findById(emailId).select('-drafts.body'); // Don't send draft content for performance
 
     if (!email) {
       return res.status(404).json({
@@ -100,6 +113,8 @@ router.get(
     return res.json({
       data: {
         status: email.status,
+        user: email.user,
+        contact: email.contact,
         createdAt: email.createdAt,
         completedAt: email.completedAt,
         failedReason: email.failedReason,
@@ -118,9 +133,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const { emailId } = req.params;
 
-    const email = await GeneratedEmail.findById(emailId).populate<{
-      contact: IContact;
-    }>('contact');
+    const email = await GeneratedEmail.findById(emailId);
 
     if (!email) {
       return res.status(404).json({
@@ -141,6 +154,8 @@ router.get(
     return res.json({
       data: {
         status: email.status,
+        user: email.user,
+        contact: email.contact,
         finalDraft: email.finalDraft,
         articles: email.articles,
       },
