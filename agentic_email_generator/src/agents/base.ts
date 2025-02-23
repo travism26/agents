@@ -147,10 +147,26 @@ export abstract class BaseAgent {
     reason: string,
     data: Record<string, any>
   ): void {
+    this.log('DEBUG', `Attempting handoff to ${targetAgent}`, {
+      fromAgent: this.agentType,
+      toAgent: targetAgent,
+      reason,
+      data,
+      currentPhase: this.getSharedContext().state.phase,
+    });
+
+    // Update phase before handoff
+    if (targetAgent === 'writer') {
+      this.updatePhase('writing', 'initial_draft', 0.3);
+    } else if (targetAgent === 'reviewer') {
+      this.updatePhase('review', 'initial_review', 0.6);
+    }
+
     this.log('INFO', `Handing off to ${targetAgent}`, {
       reason,
       data,
     });
+
     this.contextManager.recordHandoff(
       this.agentType,
       targetAgent,
@@ -221,16 +237,36 @@ export abstract class BaseAgent {
     fromAgent: string,
     data: Record<string, any>
   ): boolean {
-    this.log('DEBUG', `Validating handoff from ${fromAgent}`, { data });
+    this.log('DEBUG', `Validating handoff from ${fromAgent}`, {
+      data,
+      agentType: this.agentType,
+      handoffs: this.getSharedContext().collaboration.handoffs,
+    });
     const context = this.getSharedContext();
     const lastHandoff =
       context.collaboration.handoffs[context.collaboration.handoffs.length - 1];
 
-    return (
-      lastHandoff &&
+    if (!lastHandoff) {
+      this.log('DEBUG', 'No handoff found');
+      return false;
+    }
+
+    // Only check if the required data fields are present
+    const isValid =
       lastHandoff.from === fromAgent &&
-      lastHandoff.to === this.agentType
-    );
+      lastHandoff.to === this.agentType &&
+      Object.entries(data).every(
+        ([key, value]) =>
+          lastHandoff.data[key] !== undefined &&
+          typeof lastHandoff.data[key] === typeof value
+      );
+
+    this.log('DEBUG', `Handoff validation result: ${isValid}`, {
+      expected: { from: fromAgent, to: this.agentType, data },
+      actual: lastHandoff,
+    });
+
+    return isValid;
   }
 
   /**

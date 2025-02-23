@@ -283,7 +283,7 @@ export class ContextManager {
    * Gets the current context state
    */
   getContext(): SharedContext {
-    return { ...this.context };
+    return JSON.parse(JSON.stringify(this.context));
   }
 
   /**

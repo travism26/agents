@@ -47,9 +47,10 @@ describe('ResearcherAgent', () => {
       .mockImplementation(async (messages) => {
         const userMessage = messages[1].content as string;
 
-        if (userMessage.includes('create an optimal news search query')) {
+        if (userMessage.includes('<SearchInstructions>')) {
           return {
-            content: 'Test Corp recent developments technology industry',
+            content:
+              'Test Corp AND (partnerships OR innovations OR "leadership changes" OR achievements) AND industry:Technology',
           };
         }
 
@@ -243,7 +244,7 @@ describe('ResearcherAgent', () => {
       });
     });
 
-    it('should use autonomous decision making for query building', async () => {
+    it('should use autonomous decision making with structured search instructions', async () => {
       await researcher.research(mockContact, mockCompany);
 
       // Verify LLM was called with appropriate messages
@@ -255,10 +256,21 @@ describe('ResearcherAgent', () => {
           }),
           expect.objectContaining({
             role: 'user',
-            content: expect.stringContaining(mockCompany.name),
+            content: expect.stringMatching(
+              /<SearchInstructions>[\s\S]*<\/SearchInstructions>/
+            ),
           }),
         ])
       );
+
+      // Verify search instructions contain required elements
+      const userMessage = (MockedChatOpenAI.prototype.invoke as jest.Mock).mock
+        .calls[0][0][1].content;
+      expect(userMessage).toContain('<Company>Test Corp</Company>');
+      expect(userMessage).toContain('<Person>John Doe</Person>');
+      expect(userMessage).toContain('<Industry>');
+      expect(userMessage).toContain('Technology');
+      expect(userMessage).toContain('<BusinessActivities>');
     });
 
     it('should use autonomous analysis for article categorization', async () => {

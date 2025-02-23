@@ -87,6 +87,7 @@ export async function generateEmails(
 
     // Step 2: Writing phase - Generate initial email draft
     contextManager.updatePhase('writing', 'initial_draft', 0.3);
+    await new Promise((resolve) => setTimeout(resolve, 100)); // Give time for phase update
     const initialDraft = await writer.compose(
       user,
       contact,
@@ -96,6 +97,7 @@ export async function generateEmails(
 
     // Step 3: Review phase - Begin review and revision loop
     contextManager.updatePhase('review', 'initial_review', 0.6);
+    await new Promise((resolve) => setTimeout(resolve, 100)); // Give time for phase update
     let currentDraft = initialDraft.content;
     let revisionCount = 0;
     let finalDraft: string | null = null;

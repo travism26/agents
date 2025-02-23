@@ -20,24 +20,24 @@ const contact: Contact = {
   _id: 'elon-musk',
   name: 'Elon Musk',
   title: 'CEO',
-  company: 'X Corp',
+  company: 'Tesla',
 };
 
 // Company information
 const company: Company = {
-  _id: 'x-corp',
-  name: 'X Corp',
+  _id: 'tesla',
+  name: 'Tesla',
   details: {
-    industry: 'Technology',
-    focus: ['Social Media', 'AI', 'Digital Payments'],
+    industry: 'Automotive',
+    focus: ['Electric Vehicles', 'Solar Energy', 'Autonomous Driving'],
   },
 };
 
 // Email generation options
 const emailOptions: EmailOptions = {
   goal: 'Secure a meeting to discuss AI-driven social media analytics solutions',
-  style: 'professional',
-  tone: 'direct',
+  style: 'casual',
+  tone: 'friendly',
   includeSalutation: true,
   includeSignature: true,
 };

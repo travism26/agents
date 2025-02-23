@@ -58,31 +58,44 @@ async function searchPerplexityNews(
 ): Promise<PerplexityResponse> {
   try {
     console.log(`[Perplexity API] Searching for: ${query}`);
+
+    const payload = {
+      model: 'sonar',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a news research assistant. Return only factual, recent news articles about companies. Format your response as a JSON array of articles with title, url, publishedAt, summary, and source properties.',
+        },
+        {
+          role: 'user',
+          content: `Find recent news articles about: ${query}`,
+        },
+      ],
+      max_tokens: 4000,
+      temperature: 0.2,
+      top_p: 0.9,
+    };
+
+    console.log(
+      '[Perplexity API] Request payload:',
+      JSON.stringify(payload, null, 2)
+    );
+
     const response = await axios.post(
       'https://api.perplexity.ai/chat/completions',
-      {
-        model: 'sonar',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a news research assistant. Return only factual, recent news articles about companies. Format your response as a JSON array of articles with title, url, publishedAt, summary, and source properties.',
-          },
-          {
-            role: 'user',
-            content: `Find recent news articles about: ${query}`,
-          },
-        ],
-        max_tokens: 1000,
-        temperature: 0.2,
-        top_p: 0.9,
-      },
+      payload,
       {
         headers: {
           Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
           'Content-Type': 'application/json',
         },
       }
+    );
+
+    console.log(
+      '[Perplexity API] Raw response:',
+      JSON.stringify(response.data, null, 2)
     );
 
     // Get the raw response content
@@ -184,25 +197,37 @@ export class ResearcherAgent extends BaseAgent {
       contact: contact.name,
       industry: company.details.industry,
     });
-    const prompt = `As a research expert, analyze this company and contact to create an optimal news search query.
-    
-Company: ${company.name}
-Industry: ${company.details.industry || 'Not specified'}
-Description: ${company.details.description || 'Not specified'}
-Contact: ${contact.name}
-Title: ${contact.title || 'Not specified'}
 
-Consider:
-1. Recent company developments
-2. Industry trends
-3. Contact's role and interests
-4. Company's market position
-
-Generate a focused search query that will find relevant news.`;
+    const searchInstructions = `
+<SearchInstructions>
+    <Purpose>Find news articles about the Company OR the Person</Purpose>
+    <SearchTopics>
+      <TimeRange>Search for articles from the past 3 months, Current date is ${new Date().toISOString()}</TimeRange>
+      <Company>${company.name}</Company>
+      <Person>${contact.name}</Person>
+      <Industry>The industry or market sector that ${
+        company.name
+      } operates in: ${company.details.industry || 'Not specified'}</Industry>
+      <BusinessActivities>
+        <Item>Major partnerships and investments</Item>
+        <Item>Company developments and innovations</Item>
+        <Item>Leadership changes and strategic initiatives</Item>
+        <Item>Notable achievements and milestones</Item>
+      </BusinessActivities>
+    </SearchTopics>
+    <Parameters>
+      <TimeRange>Search for articles from the past 2 years</TimeRange>
+      <Coverage>Include both major news stories and industry-specific coverage</Coverage>
+    </Parameters>
+</SearchInstructions>`;
 
     const response = await llm.invoke([
-      { role: 'system', content: 'You are an expert research strategist.' },
-      { role: 'user', content: prompt },
+      {
+        role: 'system',
+        content:
+          'You are an expert research strategist. Analyze the provided XML search instructions and generate a focused search query that will yield relevant news articles. Return ONLY the optimized search query text, no explanations.',
+      },
+      { role: 'user', content: searchInstructions },
     ]);
 
     const query = response.content.toString().trim();
@@ -212,9 +237,9 @@ Generate a focused search query that will find relevant news.`;
     // Record decision in shared context
     this.recordDecision(
       'search_query_generation',
-      'Generated optimized search query based on company and contact analysis',
-      0.85,
-      { query }
+      'Generated optimized search query based on structured search instructions',
+      0.9,
+      { query, searchInstructions }
     );
 
     return query;
@@ -231,24 +256,18 @@ Generate a focused search query that will find relevant news.`;
       articleId: article.id,
     });
     const context = this.getSharedContext();
-    const prompt = `Analyze this business news article and determine its primary category.
+    const prompt = `Categorize this article into ONE of these categories. Return ONLY the category name, no explanations:
+- partnerships_investments
+- developments_innovations
+- leadership_strategy
+- achievements_milestones
+- other
 
+Article:
 Title: ${article.title}
 Summary: ${article.summary}
-
-Context:
-- Company: ${context.company.name}
-- Industry: ${context.company.details.industry}
-- Previous findings: ${this.summarizeArticleHistory()}
-
-Categorize as one of:
-- partnerships_investments: Deals, mergers, funding
-- developments_innovations: New products, R&D, tech advances
-- leadership_strategy: Management changes, strategic decisions
-- achievements_milestones: Awards, growth markers, significant accomplishments
-- other: General news
-
-Explain your categorization reasoning and return the category.`;
+Company: ${context.company.name}
+Industry: ${context.company.details.industry}`;
 
     const response = await llm.invoke([
       { role: 'system', content: 'You are an expert news analyst.' },
@@ -342,15 +361,6 @@ Explain your categorization reasoning and return the category.`;
       });
 
       const researchTime = Date.now() - startTime;
-      this.log('INFO', 'Research completed', {
-        durationMs: researchTime,
-        articleCount: articles.length,
-      });
-
-      // Record performance metrics
-      this.recordPerformance({
-        researchTime,
-      });
 
       // Update shared context with findings
       this.contextManager.setResearchFindings(
@@ -365,6 +375,11 @@ Explain your categorization reasoning and return the category.`;
           return acc;
         }, {} as Record<string, number>)
       );
+
+      // Record performance metrics
+      this.recordPerformance({
+        researchTime,
+      });
 
       // Handoff to writer agent
       this.handoffToAgent('writer', 'Research completed successfully', {
@@ -465,8 +480,6 @@ Explain your categorization reasoning and return the category.`;
       topArticle: prioritizedArticles[0]?.title,
       categories: prioritizedArticles.map((a) => a.tags[0]).join(', '),
     });
-
-    this.updatePhase('research', 'complete', 1);
 
     return prioritizedArticles;
   }

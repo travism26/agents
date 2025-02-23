@@ -67,7 +67,15 @@ export class WriterAgent extends BaseAgent {
    * Gets valid phases for this agent
    */
   protected getValidPhases(): SharedContext['state']['phase'][] {
-    return ['writing', 'revision'];
+    const phases: SharedContext['state']['phase'][] = ['writing', 'revision'];
+    const context = this.getSharedContext();
+    this.log('DEBUG', 'Checking valid phases', {
+      currentPhase: context.state.phase,
+      validPhases: phases,
+      hasError: !!context.state.error,
+      pendingSuggestions: this.getPendingSuggestions().length,
+    });
+    return phases;
   }
 
   /**
@@ -363,12 +371,24 @@ Common patterns: ${patterns.join(', ')}`;
       goal: emailOptions.goal,
       articleCount: newsArticles.length,
     });
+    // Verify handoff and phase
+    if (
+      !this.validateHandoff('researcher', { articleCount: newsArticles.length })
+    ) {
+      throw new Error(
+        'Invalid handoff - expected handoff from researcher agent'
+      );
+    }
+
     // Verify we can proceed
     if (!this.canProceed()) {
       throw new Error(
         'Cannot proceed with composition - invalid state or blocking suggestions'
       );
     }
+
+    // Update phase to writing
+    this.updatePhase('writing', 'initial_draft', 0.3);
 
     try {
       // Record start time for performance tracking
