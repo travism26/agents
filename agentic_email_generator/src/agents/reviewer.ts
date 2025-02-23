@@ -132,12 +132,24 @@ export class ReviewerAgent extends BaseAgent {
 
     // Verify we can proceed
     if (!this.canProceed()) {
+      const util = require('util');
       const errorDetails = {
         invalidPhase: !validPhases.includes(sharedContext.state.phase),
         hasPendingSuggestions: pendingSuggestions.length > 0,
         invalidHandoff: !lastHandoff || lastHandoff.to !== this.agentType,
         hasError: !!sharedContext.state.error,
       };
+      console.log(
+        'Cannot proceed with review',
+        util.inspect(errorDetails, false, null, true),
+        lastHandoff,
+        sharedContext.state.phase,
+        validPhases,
+        pendingSuggestions,
+        sharedContext.state.error,
+        lastHandoff,
+        this.agentType
+      );
 
       this.log('ERROR', 'Cannot proceed with review', {
         errorDetails,

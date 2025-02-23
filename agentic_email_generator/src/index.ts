@@ -113,6 +113,7 @@ export async function generateEmails(
 
     do {
       // Update subphase for each revision
+      console.log('Updating subphase for revision');
       if (revisionCount > 0) {
         contextManager.updatePhase(
           'revision',
@@ -121,19 +122,23 @@ export async function generateEmails(
         );
       }
 
+      console.log('Reviewing draft');
       reviewResult = await reviewer.review(currentDraft, {
         contact,
         articles: newsArticles,
         angle,
         revisionCount,
       });
-
+      console.log('Review completed');
+      console.log('Review result:', reviewResult);
       if (reviewResult.approved) {
+        console.log('Draft approved');
         finalDraft = currentDraft;
         break;
       }
 
       if (revisionCount >= 3) {
+        console.log('Failed to meet quality standards');
         contextManager.updatePhase('failed');
         return {
           record: {
@@ -151,6 +156,7 @@ export async function generateEmails(
       }
 
       // Generate new draft incorporating review suggestions
+      console.log('Generating revised draft');
       const revisedDraft = await writer.compose(
         user,
         contact,
@@ -162,12 +168,14 @@ export async function generateEmails(
         },
         newsArticles
       );
-
+      console.log('Revised draft generated');
+      console.log('Revised draft:', revisedDraft.content);
       currentDraft = revisedDraft.content;
       revisionCount++;
     } while (revisionCount < 3);
 
     if (!finalDraft) {
+      console.log('Failed to generate acceptable email draft');
       contextManager.updatePhase('failed');
       return {
         record: {
@@ -184,7 +192,9 @@ export async function generateEmails(
     }
 
     // Update to completion phase
+    console.log('Updating to completion phase');
     contextManager.updatePhase('complete', undefined, 1);
+    console.log('Completion phase updated');
 
     // Create successful generation record
     const generatedEmail: GeneratedEmail = {
@@ -205,6 +215,7 @@ export async function generateEmails(
       },
     };
   } catch (error) {
+    console.error('Error occurred during email generation', error);
     contextManager.updatePhase('failed');
     return {
       record: {
