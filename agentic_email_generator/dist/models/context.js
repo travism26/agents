@@ -13,6 +13,7 @@ class ContextManager {
             user,
             contact,
             company,
+            logs: [],
             state: {
                 phase: 'research',
                 progress: 0,
@@ -30,6 +31,28 @@ class ContextManager {
                 suggestions: [],
             },
         };
+    }
+    /**
+     * Adds a log entry to the context
+     */
+    addLog(entry) {
+        this.context.logs.push(entry);
+        // Keep only the last 1000 logs to prevent memory issues
+        if (this.context.logs.length > 1000) {
+            this.context.logs = this.context.logs.slice(-1000);
+        }
+    }
+    /**
+     * Gets all logs for a specific agent
+     */
+    getAgentLogs(agent) {
+        return this.context.logs.filter((log) => log.agent === agent);
+    }
+    /**
+     * Gets all logs of a specific level
+     */
+    getLogsByLevel(level) {
+        return this.context.logs.filter((log) => log.level === level);
     }
     /**
      * Records a decision made by an agent

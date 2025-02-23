@@ -5,6 +5,16 @@
 
 import { User, Contact, Company, NewsArticle, Angle } from './models';
 
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
+export interface LogEntry {
+  timestamp: Date;
+  level: LogLevel;
+  agent: string;
+  message: string;
+  metadata: Record<string, any>;
+}
+
 export interface AgentDecision {
   agent: 'researcher' | 'writer' | 'reviewer';
   timestamp: Date;
@@ -20,6 +30,7 @@ export interface SharedContext {
   user: User;
   contact: Contact;
   company: Company;
+  logs: LogEntry[];
   state: {
     phase:
       | 'research'
@@ -95,6 +106,7 @@ export class ContextManager {
       user,
       contact,
       company,
+      logs: [],
       state: {
         phase: 'research',
         progress: 0,
@@ -112,6 +124,32 @@ export class ContextManager {
         suggestions: [],
       },
     };
+  }
+
+  /**
+   * Adds a log entry to the context
+   */
+  addLog(entry: LogEntry): void {
+    this.context.logs.push(entry);
+
+    // Keep only the last 1000 logs to prevent memory issues
+    if (this.context.logs.length > 1000) {
+      this.context.logs = this.context.logs.slice(-1000);
+    }
+  }
+
+  /**
+   * Gets all logs for a specific agent
+   */
+  getAgentLogs(agent: string): LogEntry[] {
+    return this.context.logs.filter((log) => log.agent === agent);
+  }
+
+  /**
+   * Gets all logs of a specific level
+   */
+  getLogsByLevel(level: LogLevel): LogEntry[] {
+    return this.context.logs.filter((log) => log.level === level);
   }
 
   /**

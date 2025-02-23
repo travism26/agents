@@ -2,11 +2,16 @@
  * Base Agent Class
  * Provides shared functionality and context management for all agents
  */
-import { ContextManager, AgentDecision, SharedContext } from '../models/context';
+import { ContextManager, AgentDecision, SharedContext, LogLevel } from '../models/context';
+type LogMetadata = Record<string, any>;
 export declare abstract class BaseAgent {
     protected contextManager: ContextManager;
     protected agentType: 'researcher' | 'writer' | 'reviewer';
     protected maxRecoveryAttempts: number;
+    /**
+     * Log a message with optional metadata
+     */
+    protected log(level: LogLevel, message: string, metadata?: LogMetadata, error?: Error): void;
     constructor(contextManager: ContextManager, agentType: 'researcher' | 'writer' | 'reviewer');
     /**
      * Records a decision made by this agent
@@ -61,3 +66,4 @@ export declare abstract class BaseAgent {
      */
     protected abstract getFallbackStrategy(): Promise<any>;
 }
+export {};

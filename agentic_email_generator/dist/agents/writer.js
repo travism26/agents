@@ -39,8 +39,13 @@ class WriterAgent extends base_1.BaseAgent {
      * Implements fallback strategy for writing failures
      */
     async getFallbackStrategy() {
+        this.log('INFO', 'Initiating fallback strategy for email generation');
         const context = this.getSharedContext();
         const latestDraft = context.memory.draftHistory[context.memory.draftHistory.length - 1];
+        this.log('DEBUG', 'Using latest draft as reference', {
+            hasPreviousDraft: !!latestDraft,
+            draftHistoryLength: context.memory.draftHistory.length,
+        });
         // Try a more straightforward approach
         const simplifiedDraft = await this.generateSimplifiedDraft(context.user, context.contact, latestDraft?.content);
         return simplifiedDraft;
@@ -49,6 +54,11 @@ class WriterAgent extends base_1.BaseAgent {
      * Generates a simplified draft when normal generation fails
      */
     async generateSimplifiedDraft(user, contact, previousContent) {
+        this.log('DEBUG', 'Generating simplified draft', {
+            contactName: contact.name,
+            contactTitle: contact.title,
+            hasPreviousContent: !!previousContent,
+        });
         const prompt = `Generate a simple, straightforward email draft.
 
 Previous Content (for reference):
@@ -92,6 +102,10 @@ Use a professional tone and standard business email format.`;
      * Analyzes articles to determine the most compelling narrative
      */
     async analyzeArticles(articles, goal) {
+        this.log('INFO', 'Analyzing articles for narrative creation', {
+            articleCount: articles.length,
+            goal,
+        });
         const prompt = `As an expert email writer, analyze these news articles and create a compelling narrative that supports the email goal.
 
 Goal: ${goal}
@@ -122,6 +136,10 @@ Provide a JSON response with:
         const selectedArticles = articles
             .filter((article) => result.selectedArticles.includes(article.title))
             .map((article) => article.id);
+        this.log('INFO', 'Article analysis complete', {
+            selectedArticleCount: selectedArticles.length,
+            narrativeLength: result.narrative.length,
+        });
         return {
             narrative: result.narrative,
             selectedArticles,
@@ -131,6 +149,11 @@ Provide a JSON response with:
      * Generates personalized content based on contact and context
      */
     async generatePersonalizedContent(contact, goal, style, narrative) {
+        this.log('INFO', 'Generating personalized content', {
+            contactName: contact.name,
+            style,
+            goal,
+        });
         const prompt = `Create highly personalized email content for this contact.
 
 Contact Information:
@@ -185,6 +208,10 @@ Common patterns: ${patterns.join(', ')}`;
      * Determines optimal email style and tone based on context
      */
     determineOptimalStyle(contact, goal) {
+        this.log('DEBUG', 'Determining optimal email style', {
+            contactTitle: contact.title,
+            goal,
+        });
         const context = this.getSharedContext();
         const history = context.memory.draftHistory;
         // Analyze successful drafts
@@ -197,6 +224,9 @@ Common patterns: ${patterns.join(', ')}`;
                 : 'direct',
         }));
         if (successfulStyles.length > 0) {
+            this.log('DEBUG', 'Using historical style data', {
+                successfulDraftsCount: successfulStyles.length,
+            });
             // Use most common successful style
             const style = successfulStyles
                 .map((s) => s.style)
@@ -227,6 +257,11 @@ Common patterns: ${patterns.join(', ')}`;
      * Generates an email draft using autonomous decision making
      */
     async compose(user, contact, emailOptions, newsArticles) {
+        this.log('INFO', 'Starting email composition', {
+            contactName: contact.name,
+            goal: emailOptions.goal,
+            articleCount: newsArticles.length,
+        });
         // Verify we can proceed
         if (!this.canProceed()) {
             throw new Error('Cannot proceed with composition - invalid state or blocking suggestions');
@@ -234,18 +269,31 @@ Common patterns: ${patterns.join(', ')}`;
         try {
             // Record start time for performance tracking
             const startTime = Date.now();
+            this.log('DEBUG', 'Determining email style and tone');
             // Determine optimal style and tone
             const optimalStyle = this.determineOptimalStyle(contact, emailOptions.goal);
             const finalStyle = emailOptions.style || optimalStyle.style;
             const finalTone = emailOptions.tone || optimalStyle.tone;
+            this.log('INFO', 'Style determined', {
+                style: finalStyle,
+                tone: finalTone,
+                isCustomStyle: !!emailOptions.style,
+            });
             // Record style decision
             this.recordDecision('style_selection', `Selected ${finalStyle} style and ${finalTone} tone based on contact analysis`, 0.8, { style: finalStyle, tone: finalTone });
             // Analyze articles and create narrative
             const { narrative, selectedArticles } = await this.analyzeArticles(newsArticles, emailOptions.goal);
+            this.log('DEBUG', 'Starting content generation');
             // Generate content
             const content = await this.generatePersonalizedContent(contact, emailOptions.goal, finalStyle, narrative);
+            this.log('INFO', 'Content generated', {
+                contentLength: content.length,
+                wordCount: content.split(/\s+/).length,
+            });
+            this.log('DEBUG', 'Generating subject line');
             // Generate subject line
             const subject = await this.generateSubjectLine(emailOptions.goal, narrative, finalTone);
+            this.log('INFO', 'Subject line generated', { subject });
             // Calculate metrics
             const wordCount = content.split(/\s+/).length;
             // Create metadata
@@ -273,9 +321,15 @@ Common patterns: ${patterns.join(', ')}`;
                 ...(this.writerContext.previousEmails || []),
                 draft,
             ];
+            const writingTime = Date.now() - startTime;
+            this.log('INFO', 'Email composition completed', {
+                durationMs: writingTime,
+                wordCount,
+                subjectLength: subject.length,
+            });
             // Record performance metrics
             this.recordPerformance({
-                writingTime: Date.now() - startTime,
+                writingTime,
             });
             // Record completion
             this.recordDecision('draft_completion', 'Successfully generated personalized email draft', 0.9, { wordCount, style: finalStyle });
@@ -292,6 +346,10 @@ Common patterns: ${patterns.join(', ')}`;
      * Generates an engaging subject line
      */
     async generateSubjectLine(goal, narrative, tone) {
+        this.log('DEBUG', 'Generating subject line', {
+            goal,
+            tone,
+        });
         const prompt = `Create an engaging email subject line.
 
 Goal: ${goal}

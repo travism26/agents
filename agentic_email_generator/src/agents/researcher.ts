@@ -57,6 +57,7 @@ async function searchPerplexityNews(
   query: string
 ): Promise<PerplexityResponse> {
   try {
+    console.log(`[Perplexity API] Searching for: ${query}`);
     const response = await axios.post(
       'https://api.perplexity.ai/chat/completions',
       {
@@ -90,6 +91,7 @@ async function searchPerplexityNews(
     // Extract JSON from the response text
     const jsonMatch = rawContent.match(/\[.*\]/s);
     if (!jsonMatch) {
+      console.error('[Perplexity API] Failed to extract JSON from response');
       throw new Error('No JSON array found in response');
     }
 
@@ -177,6 +179,11 @@ export class ResearcherAgent extends BaseAgent {
     contact: Contact,
     company: Company
   ): Promise<string> {
+    this.log('DEBUG', 'Building search query', {
+      company: company.name,
+      contact: contact.name,
+      industry: company.details.industry,
+    });
     const prompt = `As a research expert, analyze this company and contact to create an optimal news search query.
     
 Company: ${company.name}
@@ -200,6 +207,8 @@ Generate a focused search query that will find relevant news.`;
 
     const query = response.content.toString().trim();
 
+    this.log('INFO', 'Generated search query', { query });
+
     // Record decision in shared context
     this.recordDecision(
       'search_query_generation',
@@ -217,6 +226,10 @@ Generate a focused search query that will find relevant news.`;
   private async categorizeArticle(
     article: NewsArticle
   ): Promise<ArticleCategory> {
+    this.log('DEBUG', 'Categorizing article', {
+      articleTitle: article.title,
+      articleId: article.id,
+    });
     const context = this.getSharedContext();
     const prompt = `Analyze this business news article and determine its primary category.
 
@@ -245,6 +258,8 @@ Explain your categorization reasoning and return the category.`;
     // Extract category from response
     const content = response.content.toString().toLowerCase();
     let category: ArticleCategory;
+
+    this.log('DEBUG', 'LLM categorization response', { content });
 
     if (content.includes('partnerships_investments')) {
       category = ArticleCategory.PARTNERSHIPS_INVESTMENTS;
@@ -297,6 +312,11 @@ Explain your categorization reasoning and return the category.`;
    * Performs research by fetching and analyzing news articles
    */
   async research(contact: Contact, company: Company): Promise<NewsArticle[]> {
+    this.log('INFO', 'Starting research process', {
+      company: company.name,
+      contact: contact.name,
+    });
+
     // Update phase in shared context
     this.updatePhase('research', 'initializing', 0);
 
@@ -310,14 +330,26 @@ Explain your categorization reasoning and return the category.`;
     const startTime = Date.now();
 
     try {
+      this.log('DEBUG', 'Attempting to fetch news articles');
       const articles = await this.handleError(
         async () => this.fetchNewsArticles(contact, company),
         async () => this.getFallbackStrategy()
       );
 
+      this.log('INFO', 'Successfully fetched articles', {
+        count: articles.length,
+        categories: articles.map((a) => a.tags[0]).join(', '),
+      });
+
+      const researchTime = Date.now() - startTime;
+      this.log('INFO', 'Research completed', {
+        durationMs: researchTime,
+        articleCount: articles.length,
+      });
+
       // Record performance metrics
       this.recordPerformance({
-        researchTime: Date.now() - startTime,
+        researchTime,
       });
 
       // Update shared context with findings
@@ -357,6 +389,7 @@ Explain your categorization reasoning and return the category.`;
     contact: Contact,
     company: Company
   ): Promise<NewsArticle[]> {
+    this.log('DEBUG', 'Starting article fetch process');
     this.updatePhase('research', 'querying', 0.2);
 
     // Build optimized search query using autonomous decision making
@@ -373,8 +406,22 @@ Explain your categorization reasoning and return the category.`;
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
+    this.log('DEBUG', 'Filtering articles by date', {
+      cutoffDate: sixMonthsAgo.toISOString(),
+      totalArticles: response.articles.length,
+    });
+
     const articles: NewsArticle[] = response.articles
-      .filter((article) => new Date(article.publishedAt) >= sixMonthsAgo)
+      .filter((article) => {
+        const isRecent = new Date(article.publishedAt) >= sixMonthsAgo;
+        if (!isRecent) {
+          this.log('DEBUG', 'Filtered out old article', {
+            title: article.title,
+            publishedAt: article.publishedAt,
+          });
+        }
+        return isRecent;
+      })
       .map((article) => ({
         id: article.id,
         title: article.title,
@@ -396,13 +443,28 @@ Explain your categorization reasoning and return the category.`;
       }))
     );
 
+    this.log('INFO', 'Articles categorized', {
+      totalArticles: categorizedArticles.length,
+      categoryCounts: categorizedArticles.reduce((acc, article) => {
+        const category = article.tags[0];
+        acc[category] = (acc[category] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+    });
+
     // Update agent's article history
     this.searchContext.articleHistory = categorizedArticles;
 
     this.updatePhase('research', 'prioritizing', 0.9);
 
+    this.log('DEBUG', 'Prioritizing articles');
     // Sort articles by category and relevance
     const prioritizedArticles = this.prioritizeArticles(categorizedArticles);
+
+    this.log('INFO', 'Articles prioritized', {
+      topArticle: prioritizedArticles[0]?.title,
+      categories: prioritizedArticles.map((a) => a.tags[0]).join(', '),
+    });
 
     this.updatePhase('research', 'complete', 1);
 

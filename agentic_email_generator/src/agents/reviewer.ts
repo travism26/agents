@@ -85,6 +85,7 @@ export class ReviewerAgent extends BaseAgent {
    * Implements fallback strategy for review failures
    */
   protected async getFallbackStrategy(): Promise<ReviewResult> {
+    this.log('INFO', 'Initiating fallback review strategy');
     // Return a conservative review result
     return {
       approved: false,
@@ -108,6 +109,11 @@ export class ReviewerAgent extends BaseAgent {
     context: EmailContext,
     criteria: Partial<QualityCriteria> = {}
   ): Promise<ReviewResult> {
+    this.log('INFO', 'Starting email review', {
+      contactName: context.contact.name,
+      revisionCount: context.revisionCount,
+      draftLength: draft.length,
+    });
     // Verify we can proceed
     if (!this.canProceed()) {
       throw new Error(
@@ -119,6 +125,10 @@ export class ReviewerAgent extends BaseAgent {
 
     // Check revision limit
     if (context.revisionCount >= this.MAX_REVISIONS) {
+      this.log('WARN', 'Maximum revision limit reached', {
+        revisionCount: context.revisionCount,
+        maxRevisions: this.MAX_REVISIONS,
+      });
       return {
         approved: false,
         score: 0,
@@ -134,7 +144,14 @@ export class ReviewerAgent extends BaseAgent {
 
       // Phase 1: Initial Analysis
       this.updatePhase('review', 'initial_analysis', 0.2);
+      this.log('DEBUG', 'Starting initial analysis');
       const initialAnalysis = await this.performInitialAnalysis(draft, context);
+
+      this.log('INFO', 'Initial analysis completed', {
+        score: initialAnalysis.score,
+        toneScore: initialAnalysis.analysis?.toneScore,
+        contentRelevance: initialAnalysis.analysis?.contentRelevance,
+      });
 
       // Record initial analysis decision
       this.recordDecision(
@@ -146,6 +163,7 @@ export class ReviewerAgent extends BaseAgent {
 
       // Phase 2: Detailed Review
       this.updatePhase('review', 'detailed_review', 0.4);
+      this.log('DEBUG', 'Starting detailed review');
       const detailedReview = await this.performDetailedReview(
         draft,
         context,
@@ -156,6 +174,10 @@ export class ReviewerAgent extends BaseAgent {
       // Phase 3: Improvement Generation (if needed)
       let improvements;
       if (detailedReview.score < 80) {
+        this.log('INFO', 'Draft requires improvements', {
+          score: detailedReview.score,
+          improvementAreas: detailedReview.analysis?.improvementAreas,
+        });
         this.updatePhase('review', 'improvement_generation', 0.6);
         improvements = await this.generateImprovements(
           draft,
@@ -170,7 +192,14 @@ export class ReviewerAgent extends BaseAgent {
 
       // Phase 4: Final Validation
       this.updatePhase('review', 'final_validation', 0.8);
+      this.log('DEBUG', 'Starting final validation');
       const finalReview = await this.validateReview(detailedReview, context);
+
+      this.log('INFO', 'Review validation completed', {
+        approved: finalReview.approved,
+        finalScore: finalReview.score,
+        suggestionCount: finalReview.suggestions.length,
+      });
 
       // Update shared context with review results
       this.contextManager.addDraftVersion(draft, {
@@ -220,6 +249,10 @@ export class ReviewerAgent extends BaseAgent {
     draft: string,
     context: EmailContext
   ): Promise<ReviewResult> {
+    this.log('DEBUG', 'Performing initial analysis', {
+      draftLength: draft.length,
+      contactTitle: context.contact.title,
+    });
     const prompt = `Perform a quick initial analysis of this email draft.
 
 Draft:
@@ -257,6 +290,10 @@ Provide a JSON response with:
     criteria: QualityCriteria,
     initialAnalysis: ReviewResult
   ): Promise<ReviewResult> {
+    this.log('DEBUG', 'Starting detailed review', {
+      initialScore: initialAnalysis.score,
+      criteriaElements: criteria.requiredElements.length,
+    });
     const sharedContext = this.getSharedContext();
     const previousDrafts = sharedContext.memory.draftHistory;
 
@@ -313,6 +350,10 @@ Provide a comprehensive JSON analysis including:
     improvedContent: string;
     improvements: { suggestion: string; impact: number; reasoning: string }[];
   }> {
+    this.log('DEBUG', 'Generating improvements', {
+      currentScore: review.score,
+      improvementAreas: review.analysis?.improvementAreas,
+    });
     const sharedContext = this.getSharedContext();
     const previousDrafts = sharedContext.memory.draftHistory;
 
@@ -355,6 +396,10 @@ Return as JSON with:
     review: ReviewResult,
     context: EmailContext
   ): Promise<ReviewResult> {
+    this.log('DEBUG', 'Validating review results', {
+      score: review.score,
+      hasImprovements: !!review.improvedContent,
+    });
     const sharedContext = this.getSharedContext();
     const previousDrafts = sharedContext.memory.draftHistory;
 
@@ -365,6 +410,9 @@ Return as JSON with:
       );
 
       if (successfulDrafts.length > 0) {
+        this.log('DEBUG', 'Applying historical pattern boost', {
+          successfulDraftsCount: successfulDrafts.length,
+        });
         // Boost scores for matching successful patterns
         if (review.analysis) {
           review.analysis.toneScore *= 1.1;

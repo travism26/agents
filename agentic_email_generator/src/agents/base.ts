@@ -7,12 +7,50 @@ import {
   ContextManager,
   AgentDecision,
   SharedContext,
+  LogLevel,
 } from '../models/context';
+
+type LogMetadata = Record<string, any>;
 
 export abstract class BaseAgent {
   protected contextManager: ContextManager;
   protected agentType: 'researcher' | 'writer' | 'reviewer';
   protected maxRecoveryAttempts = 3;
+
+  /**
+   * Log a message with optional metadata
+   */
+  protected log(
+    level: LogLevel,
+    message: string,
+    metadata: LogMetadata = {},
+    error?: Error
+  ): void {
+    const timestamp = new Date();
+    const logEntry = {
+      timestamp,
+      level,
+      agent: this.agentType,
+      message,
+      metadata: {
+        ...metadata,
+        error: error
+          ? {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+            }
+          : undefined,
+      },
+    };
+
+    this.contextManager.addLog(logEntry);
+
+    // Also record as error if appropriate
+    if (level === 'ERROR' && error) {
+      this.contextManager.recordError(this.agentType, error.message);
+    }
+  }
 
   constructor(
     contextManager: ContextManager,
@@ -31,6 +69,11 @@ export abstract class BaseAgent {
     confidence: number,
     metadata: Record<string, any> = {}
   ): void {
+    this.log('INFO', `Making decision: ${decision}`, {
+      reasoning,
+      confidence,
+      ...metadata,
+    });
     const agentDecision: AgentDecision = {
       agent: this.agentType,
       timestamp: new Date(),
@@ -50,11 +93,23 @@ export abstract class BaseAgent {
     fallbackStrategy?: () => Promise<T>
   ): Promise<T> {
     try {
-      return await operation();
+      this.log('DEBUG', 'Starting operation', { operation: operation.name });
+      const result = await operation();
+      this.log('DEBUG', 'Operation completed successfully', {
+        operation: operation.name,
+      });
+      return result;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.contextManager.recordError(this.agentType, errorMessage);
+      this.log(
+        'ERROR',
+        `Operation failed: ${errorMessage}`,
+        {
+          operation: operation.name,
+        },
+        error instanceof Error ? error : undefined
+      );
 
       // Attempt recovery if fallback strategy is provided
       if (fallbackStrategy) {
@@ -92,6 +147,10 @@ export abstract class BaseAgent {
     reason: string,
     data: Record<string, any>
   ): void {
+    this.log('INFO', `Handing off to ${targetAgent}`, {
+      reason,
+      data,
+    });
     this.contextManager.recordHandoff(
       this.agentType,
       targetAgent,
@@ -104,6 +163,7 @@ export abstract class BaseAgent {
    * Makes a suggestion to another agent
    */
   protected makeSuggestion(suggestion: string, context: string): void {
+    this.log('INFO', `Making suggestion: ${suggestion}`, { context });
     this.contextManager.addSuggestion(this.agentType, suggestion, context);
   }
 
@@ -115,6 +175,10 @@ export abstract class BaseAgent {
     subPhase?: string,
     progress?: number
   ): void {
+    this.log('INFO', `Updating phase to ${phase}`, {
+      subPhase,
+      progress,
+    });
     this.contextManager.updatePhase(phase, subPhase, progress);
   }
 
@@ -157,6 +221,7 @@ export abstract class BaseAgent {
     fromAgent: string,
     data: Record<string, any>
   ): boolean {
+    this.log('DEBUG', `Validating handoff from ${fromAgent}`, { data });
     const context = this.getSharedContext();
     const lastHandoff =
       context.collaboration.handoffs[context.collaboration.handoffs.length - 1];
@@ -173,6 +238,11 @@ export abstract class BaseAgent {
    */
   protected canProceed(): boolean {
     const context = this.getSharedContext();
+    this.log('DEBUG', 'Checking if agent can proceed', {
+      currentPhase: context.state.phase,
+      hasError: !!context.state.error,
+      pendingSuggestions: this.getPendingSuggestions().length,
+    });
 
     // Check if there's an active error
     if (context.state.error) {

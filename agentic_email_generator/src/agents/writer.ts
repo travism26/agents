@@ -74,9 +74,15 @@ export class WriterAgent extends BaseAgent {
    * Implements fallback strategy for writing failures
    */
   protected async getFallbackStrategy(): Promise<EmailDraft> {
+    this.log('INFO', 'Initiating fallback strategy for email generation');
     const context = this.getSharedContext();
     const latestDraft =
       context.memory.draftHistory[context.memory.draftHistory.length - 1];
+
+    this.log('DEBUG', 'Using latest draft as reference', {
+      hasPreviousDraft: !!latestDraft,
+      draftHistoryLength: context.memory.draftHistory.length,
+    });
 
     // Try a more straightforward approach
     const simplifiedDraft = await this.generateSimplifiedDraft(
@@ -96,6 +102,11 @@ export class WriterAgent extends BaseAgent {
     contact: Contact,
     previousContent?: string
   ): Promise<EmailDraft> {
+    this.log('DEBUG', 'Generating simplified draft', {
+      contactName: contact.name,
+      contactTitle: contact.title,
+      hasPreviousContent: !!previousContent,
+    });
     const prompt = `Generate a simple, straightforward email draft.
 
 Previous Content (for reference):
@@ -149,6 +160,10 @@ Use a professional tone and standard business email format.`;
     articles: NewsArticle[],
     goal: string
   ): Promise<{ narrative: string; selectedArticles: string[] }> {
+    this.log('INFO', 'Analyzing articles for narrative creation', {
+      articleCount: articles.length,
+      goal,
+    });
     const prompt = `As an expert email writer, analyze these news articles and create a compelling narrative that supports the email goal.
 
 Goal: ${goal}
@@ -184,6 +199,11 @@ Provide a JSON response with:
       .filter((article) => result.selectedArticles.includes(article.title))
       .map((article) => article.id);
 
+    this.log('INFO', 'Article analysis complete', {
+      selectedArticleCount: selectedArticles.length,
+      narrativeLength: result.narrative.length,
+    });
+
     return {
       narrative: result.narrative,
       selectedArticles,
@@ -199,6 +219,11 @@ Provide a JSON response with:
     style: string,
     narrative: string
   ): Promise<string> {
+    this.log('INFO', 'Generating personalized content', {
+      contactName: contact.name,
+      style,
+      goal,
+    });
     const prompt = `Create highly personalized email content for this contact.
 
 Contact Information:
@@ -265,6 +290,10 @@ Common patterns: ${patterns.join(', ')}`;
     contact: Contact,
     goal: string
   ): { style: EmailOptions['style']; tone: EmailOptions['tone'] } {
+    this.log('DEBUG', 'Determining optimal email style', {
+      contactTitle: contact.title,
+      goal,
+    });
     const context = this.getSharedContext();
     const history = context.memory.draftHistory;
 
@@ -279,6 +308,10 @@ Common patterns: ${patterns.join(', ')}`;
       }));
 
     if (successfulStyles.length > 0) {
+      this.log('DEBUG', 'Using historical style data', {
+        successfulDraftsCount: successfulStyles.length,
+      });
+
       // Use most common successful style
       const style = successfulStyles
         .map((s) => s.style)
@@ -325,6 +358,11 @@ Common patterns: ${patterns.join(', ')}`;
     emailOptions: EmailOptions,
     newsArticles: NewsArticle[]
   ): Promise<EmailDraft> {
+    this.log('INFO', 'Starting email composition', {
+      contactName: contact.name,
+      goal: emailOptions.goal,
+      articleCount: newsArticles.length,
+    });
     // Verify we can proceed
     if (!this.canProceed()) {
       throw new Error(
@@ -336,13 +374,21 @@ Common patterns: ${patterns.join(', ')}`;
       // Record start time for performance tracking
       const startTime = Date.now();
 
+      this.log('DEBUG', 'Determining email style and tone');
       // Determine optimal style and tone
       const optimalStyle = this.determineOptimalStyle(
         contact,
         emailOptions.goal
       );
+
       const finalStyle = emailOptions.style || optimalStyle.style;
       const finalTone = emailOptions.tone || optimalStyle.tone;
+
+      this.log('INFO', 'Style determined', {
+        style: finalStyle,
+        tone: finalTone,
+        isCustomStyle: !!emailOptions.style,
+      });
 
       // Record style decision
       this.recordDecision(
@@ -358,6 +404,7 @@ Common patterns: ${patterns.join(', ')}`;
         emailOptions.goal
       );
 
+      this.log('DEBUG', 'Starting content generation');
       // Generate content
       const content = await this.generatePersonalizedContent(
         contact,
@@ -366,12 +413,20 @@ Common patterns: ${patterns.join(', ')}`;
         narrative
       );
 
+      this.log('INFO', 'Content generated', {
+        contentLength: content.length,
+        wordCount: content.split(/\s+/).length,
+      });
+
+      this.log('DEBUG', 'Generating subject line');
       // Generate subject line
       const subject = await this.generateSubjectLine(
         emailOptions.goal,
         narrative,
         finalTone
       );
+
+      this.log('INFO', 'Subject line generated', { subject });
 
       // Calculate metrics
       const wordCount = content.split(/\s+/).length;
@@ -404,9 +459,16 @@ Common patterns: ${patterns.join(', ')}`;
         draft,
       ];
 
+      const writingTime = Date.now() - startTime;
+      this.log('INFO', 'Email composition completed', {
+        durationMs: writingTime,
+        wordCount,
+        subjectLength: subject.length,
+      });
+
       // Record performance metrics
       this.recordPerformance({
-        writingTime: Date.now() - startTime,
+        writingTime,
       });
 
       // Record completion
@@ -437,6 +499,10 @@ Common patterns: ${patterns.join(', ')}`;
     narrative: string,
     tone: string
   ): Promise<string> {
+    this.log('DEBUG', 'Generating subject line', {
+      goal,
+      tone,
+    });
     const prompt = `Create an engaging email subject line.
 
 Goal: ${goal}

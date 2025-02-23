@@ -3,6 +3,14 @@
  * Enables communication and state sharing between agents
  */
 import { User, Contact, Company, NewsArticle, Angle } from './models';
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+export interface LogEntry {
+    timestamp: Date;
+    level: LogLevel;
+    agent: string;
+    message: string;
+    metadata: Record<string, any>;
+}
 export interface AgentDecision {
     agent: 'researcher' | 'writer' | 'reviewer';
     timestamp: Date;
@@ -17,6 +25,7 @@ export interface SharedContext {
     user: User;
     contact: Contact;
     company: Company;
+    logs: LogEntry[];
     state: {
         phase: 'research' | 'writing' | 'review' | 'revision' | 'complete' | 'failed';
         subPhase?: string;
@@ -73,6 +82,18 @@ export interface SharedContext {
 export declare class ContextManager {
     private context;
     constructor(sessionId: string, user: User, contact: Contact, company: Company);
+    /**
+     * Adds a log entry to the context
+     */
+    addLog(entry: LogEntry): void;
+    /**
+     * Gets all logs for a specific agent
+     */
+    getAgentLogs(agent: string): LogEntry[];
+    /**
+     * Gets all logs of a specific level
+     */
+    getLogsByLevel(level: LogLevel): LogEntry[];
     /**
      * Records a decision made by an agent
      */
