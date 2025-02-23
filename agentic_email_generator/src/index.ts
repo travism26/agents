@@ -57,13 +57,16 @@ export async function generateEmails(
   const reviewer = new ReviewerAgent(contextManager);
 
   // Update initial phase
+  console.log('Initializing research phase');
   contextManager.updatePhase('research', 'initializing', 0);
 
   try {
     // Step 1: Research phase - Fetch relevant news articles
+    console.log('Fetching news articles');
     const newsArticles = await researcher.research(contact, company);
-
+    console.log('Research completed');
     if (!newsArticles.length) {
+      console.log('No relevant news articles found');
       contextManager.updatePhase('failed');
       return {
         record: {
@@ -79,6 +82,8 @@ export async function generateEmails(
     }
 
     // Create angle based on research findings
+    console.log('Creating angle');
+    // This might need to be determined by the research agent based on the goal in the emailOptions.
     const angle: Angle = {
       id: uuidv4(),
       title: 'Business Development Opportunity',
@@ -86,6 +91,7 @@ export async function generateEmails(
     };
 
     // Step 2: Writing phase - Generate initial email draft
+    console.log('Generating initial draft');
     contextManager.updatePhase('writing', 'initial_draft', 0.3);
     await new Promise((resolve) => setTimeout(resolve, 100)); // Give time for phase update
     const initialDraft = await writer.compose(
@@ -94,8 +100,10 @@ export async function generateEmails(
       emailOptions,
       newsArticles
     );
+    console.log('Initial draft generated');
 
     // Step 3: Review phase - Begin review and revision loop
+    console.log('Starting review phase');
     contextManager.updatePhase('review', 'initial_review', 0.6);
     await new Promise((resolve) => setTimeout(resolve, 100)); // Give time for phase update
     let currentDraft = initialDraft.content;

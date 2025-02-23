@@ -106,27 +106,62 @@ export class ReviewerAgent extends BaseAgent {
    */
   async review(
     draft: string,
-    context: EmailContext,
+    emailContext: EmailContext,
     criteria: Partial<QualityCriteria> = {}
   ): Promise<ReviewResult> {
     this.log('INFO', 'Starting email review', {
-      contactName: context.contact.name,
-      revisionCount: context.revisionCount,
+      contactName: emailContext.contact.name,
+      revisionCount: emailContext.revisionCount,
       draftLength: draft.length,
     });
+
+    // Get shared context state
+    const sharedContext = this.getSharedContext();
+    const validPhases = this.getValidPhases();
+    const pendingSuggestions = this.getPendingSuggestions();
+    const handoffs = sharedContext.collaboration.handoffs;
+    const lastHandoff = handoffs[handoffs.length - 1];
+
+    this.log('DEBUG', 'Checking review prerequisites', {
+      currentPhase: sharedContext.state.phase,
+      validPhases,
+      pendingSuggestions: pendingSuggestions.length,
+      lastHandoff,
+      hasError: !!sharedContext.state.error,
+    });
+
     // Verify we can proceed
     if (!this.canProceed()) {
+      const errorDetails = {
+        invalidPhase: !validPhases.includes(sharedContext.state.phase),
+        hasPendingSuggestions: pendingSuggestions.length > 0,
+        invalidHandoff: !lastHandoff || lastHandoff.to !== this.agentType,
+        hasError: !!sharedContext.state.error,
+      };
+
+      this.log('ERROR', 'Cannot proceed with review', {
+        errorDetails,
+        currentState: {
+          phase: sharedContext.state.phase,
+          handoff: lastHandoff,
+          error: sharedContext.state.error,
+        },
+      });
+
       throw new Error(
-        'Cannot proceed with review - invalid state or blocking suggestions'
+        `Cannot proceed with review - ${Object.entries(errorDetails)
+          .filter(([, isError]) => isError)
+          .map(([reason]) => reason)
+          .join(', ')}`
       );
     }
 
     const finalCriteria = { ...this.DEFAULT_CRITERIA, ...criteria };
 
     // Check revision limit
-    if (context.revisionCount >= this.MAX_REVISIONS) {
+    if (emailContext.revisionCount >= this.MAX_REVISIONS) {
       this.log('WARN', 'Maximum revision limit reached', {
-        revisionCount: context.revisionCount,
+        revisionCount: emailContext.revisionCount,
         maxRevisions: this.MAX_REVISIONS,
       });
       return {
@@ -145,7 +180,10 @@ export class ReviewerAgent extends BaseAgent {
       // Phase 1: Initial Analysis
       this.updatePhase('review', 'initial_analysis', 0.2);
       this.log('DEBUG', 'Starting initial analysis');
-      const initialAnalysis = await this.performInitialAnalysis(draft, context);
+      const initialAnalysis = await this.performInitialAnalysis(
+        draft,
+        emailContext
+      );
 
       this.log('INFO', 'Initial analysis completed', {
         score: initialAnalysis.score,
@@ -166,7 +204,7 @@ export class ReviewerAgent extends BaseAgent {
       this.log('DEBUG', 'Starting detailed review');
       const detailedReview = await this.performDetailedReview(
         draft,
-        context,
+        emailContext,
         finalCriteria,
         initialAnalysis
       );
@@ -181,7 +219,7 @@ export class ReviewerAgent extends BaseAgent {
         this.updatePhase('review', 'improvement_generation', 0.6);
         improvements = await this.generateImprovements(
           draft,
-          context,
+          emailContext,
           detailedReview
         );
         detailedReview.improvedContent = improvements.improvedContent;
@@ -193,7 +231,10 @@ export class ReviewerAgent extends BaseAgent {
       // Phase 4: Final Validation
       this.updatePhase('review', 'final_validation', 0.8);
       this.log('DEBUG', 'Starting final validation');
-      const finalReview = await this.validateReview(detailedReview, context);
+      const finalReview = await this.validateReview(
+        detailedReview,
+        emailContext
+      );
 
       this.log('INFO', 'Review validation completed', {
         approved: finalReview.approved,

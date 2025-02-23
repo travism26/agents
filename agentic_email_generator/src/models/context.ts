@@ -167,9 +167,33 @@ export class ContextManager {
     subPhase?: string,
     progress?: number
   ): void {
+    const previousPhase = this.context.state.phase;
+
+    // Clear any pending suggestions when transitioning phases
+    if (phase !== previousPhase) {
+      this.context.collaboration.suggestions = [];
+    }
+
+    // Update phase
     this.context.state.phase = phase;
     if (subPhase) this.context.state.subPhase = subPhase;
     if (progress !== undefined) this.context.state.progress = progress;
+
+    // Log phase transition
+    this.addLog({
+      timestamp: new Date(),
+      level: 'INFO',
+      agent: 'system',
+      message: `Phase transition: ${previousPhase} -> ${phase}`,
+      metadata: {
+        previousPhase,
+        newPhase: phase,
+        subPhase,
+        progress,
+        handoffs: this.context.collaboration.handoffs,
+        suggestions: this.context.collaboration.suggestions,
+      },
+    });
   }
 
   /**
@@ -181,13 +205,34 @@ export class ContextManager {
     reason: string,
     data: Record<string, any>
   ): void {
-    this.context.collaboration.handoffs.push({
+    const handoff = {
       from,
       to,
       timestamp: new Date(),
       reason,
       data,
+    };
+
+    this.context.collaboration.handoffs.push(handoff);
+
+    // Add log entry for handoff
+    this.addLog({
+      timestamp: new Date(),
+      level: 'INFO',
+      agent: 'system',
+      message: `Agent handoff: ${from} -> ${to}`,
+      metadata: {
+        handoff,
+        currentPhase: this.context.state.phase,
+        handoffCount: this.context.collaboration.handoffs.length,
+      },
     });
+
+    // Clear any pending suggestions during handoff
+    this.context.collaboration.suggestions =
+      this.context.collaboration.suggestions.filter(
+        (s) => s.status !== 'pending'
+      );
   }
 
   /**
@@ -203,6 +248,19 @@ export class ContextManager {
       angle,
       relevanceScores,
     };
+
+    // Log research findings update
+    this.addLog({
+      timestamp: new Date(),
+      level: 'INFO',
+      agent: 'system',
+      message: 'Research findings updated',
+      metadata: {
+        articleCount: articles.length,
+        angle: angle.title,
+        phase: this.context.state.phase,
+      },
+    });
   }
 
   /**
@@ -252,6 +310,18 @@ export class ContextManager {
       timestamp: new Date(),
       recoveryAttempts: 0,
     };
+
+    // Log error
+    this.addLog({
+      timestamp: new Date(),
+      level: 'ERROR',
+      agent: 'system',
+      message: `Error recorded for ${agent}`,
+      metadata: {
+        errorMessage: message,
+        phase: this.context.state.phase,
+      },
+    });
   }
 
   /**
@@ -283,6 +353,21 @@ export class ContextManager {
    * Gets the current context state
    */
   getContext(): SharedContext {
+    // Log current state before returning
+    this.addLog({
+      timestamp: new Date(),
+      level: 'DEBUG',
+      agent: 'system',
+      message: 'Context state requested',
+      metadata: {
+        phase: this.context.state.phase,
+        handoffs: this.context.collaboration.handoffs,
+        suggestions: this.context.collaboration.suggestions,
+        researchFindings: !!this.context.memory.researchFindings,
+      },
+    });
+
+    // Return deep copy of context
     return JSON.parse(JSON.stringify(this.context));
   }
 

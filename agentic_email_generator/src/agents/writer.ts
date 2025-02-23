@@ -371,26 +371,90 @@ Common patterns: ${patterns.join(', ')}`;
       goal: emailOptions.goal,
       articleCount: newsArticles.length,
     });
-    // Verify handoff and phase
-    if (
-      !this.validateHandoff('researcher', { articleCount: newsArticles.length })
-    ) {
+    // Get initial context state
+    const context = this.getSharedContext();
+
+    this.log('DEBUG', 'Initial context state', {
+      phase: context.state.phase,
+      handoffs: context.collaboration.handoffs,
+      suggestions: context.collaboration.suggestions,
+      researchFindings: !!context.memory.researchFindings,
+    });
+
+    // Ensure we're in the writing phase first
+    if (context.state.phase !== 'writing') {
+      this.log('DEBUG', 'Transitioning to writing phase', {
+        fromPhase: context.state.phase,
+        toPhase: 'writing',
+      });
+      this.updatePhase('writing', 'initial_draft', 0.3);
+    }
+
+    // Get updated context after phase transition
+    const updatedContext = this.getSharedContext();
+    const lastHandoff =
+      updatedContext.collaboration.handoffs[
+        updatedContext.collaboration.handoffs.length - 1
+      ];
+    const researchFindings = updatedContext.memory.researchFindings;
+
+    this.log('DEBUG', 'Updated context state', {
+      phase: updatedContext.state.phase,
+      handoffs: updatedContext.collaboration.handoffs,
+      suggestions: updatedContext.collaboration.suggestions,
+      researchFindings: !!researchFindings,
+    });
+
+    // Verify handoff
+    if (!lastHandoff || lastHandoff.from !== 'researcher') {
+      this.log('ERROR', 'Invalid handoff state', {
+        lastHandoff,
+        expectedFrom: 'researcher',
+      });
       throw new Error(
         'Invalid handoff - expected handoff from researcher agent'
       );
     }
 
+    // Verify research findings
+    if (!researchFindings || !researchFindings.articles.length) {
+      this.log('ERROR', 'Missing research findings', {
+        researchFindings,
+      });
+      throw new Error('Missing required research findings');
+    }
+
+    // Use research findings instead of passed articles
+    newsArticles = researchFindings.articles;
+
     // Verify we can proceed
     if (!this.canProceed()) {
+      this.log('ERROR', 'Cannot proceed with composition', {
+        phase: updatedContext.state.phase,
+        pendingSuggestions: this.getPendingSuggestions(),
+        error: updatedContext.state.error,
+      });
       throw new Error(
         'Cannot proceed with composition - invalid state or blocking suggestions'
       );
     }
 
-    // Update phase to writing
-    this.updatePhase('writing', 'initial_draft', 0.3);
-
     try {
+      // Verify research findings are available
+      if (!researchFindings?.articles?.length) {
+        this.log('ERROR', 'Missing research findings', {
+          researchFindings,
+        });
+        throw new Error('Missing required research findings');
+      }
+
+      // Log current state
+      this.log('INFO', 'Starting composition with research findings', {
+        articleCount: researchFindings.articles.length,
+        angle: researchFindings.angle,
+        phase: context.state.phase,
+      });
+
       // Record start time for performance tracking
       const startTime = Date.now();
 
@@ -498,6 +562,17 @@ Common patterns: ${patterns.join(', ')}`;
         0.9,
         { wordCount, style: finalStyle }
       );
+
+      // Handoff to reviewer agent
+      this.handoffToAgent('reviewer', 'Draft completed successfully', {
+        draft: draft.content,
+        emailContext: {
+          contact: this.getSharedContext().contact,
+          articles: researchFindings.articles,
+          angle: researchFindings.angle,
+          revisionCount: this.getSharedContext().memory.draftHistory.length,
+        },
+      });
 
       return draft;
     } catch (error) {

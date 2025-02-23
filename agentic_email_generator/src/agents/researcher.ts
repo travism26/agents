@@ -56,27 +56,28 @@ interface PerplexityResponse {
 async function searchPerplexityNews(
   query: string
 ): Promise<PerplexityResponse> {
+  console.log(`[Perplexity API] Searching for: ${query}`);
+
+  // Define payload outside try block so it's accessible in retry logic
+  const payload = {
+    model: 'sonar',
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are a news research assistant. Return only factual, recent news articles about companies. Format your response as a JSON array of articles with title, url, publishedAt, summary, and source properties.',
+      },
+      {
+        role: 'user',
+        content: `Find recent news articles about: ${query}`,
+      },
+    ],
+    max_tokens: 4000,
+    temperature: 0.2,
+    top_p: 0.9,
+  };
+
   try {
-    console.log(`[Perplexity API] Searching for: ${query}`);
-
-    const payload = {
-      model: 'sonar',
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a news research assistant. Return only factual, recent news articles about companies. Format your response as a JSON array of articles with title, url, publishedAt, summary, and source properties.',
-        },
-        {
-          role: 'user',
-          content: `Find recent news articles about: ${query}`,
-        },
-      ],
-      max_tokens: 4000,
-      temperature: 0.2,
-      top_p: 0.9,
-    };
-
     console.log(
       '[Perplexity API] Request payload:',
       JSON.stringify(payload, null, 2)
@@ -101,15 +102,28 @@ async function searchPerplexityNews(
     // Get the raw response content
     const rawContent = response.data.choices[0].message.content;
 
-    // Extract JSON from the response text
-    const jsonMatch = rawContent.match(/\[.*\]/s);
-    if (!jsonMatch) {
-      console.error('[Perplexity API] Failed to extract JSON from response');
-      throw new Error('No JSON array found in response');
+    // Extract and parse JSON more robustly
+    let articles;
+    try {
+      // First try to parse the entire response as JSON
+      articles = JSON.parse(rawContent);
+    } catch {
+      // If that fails, try to extract JSON array
+      const jsonMatch = rawContent.match(/\[.*\]/s);
+      if (!jsonMatch) {
+        console.error('[Perplexity API] Failed to extract JSON from response');
+        throw new Error('No JSON array found in response');
+      }
+      try {
+        articles = JSON.parse(jsonMatch[0]);
+      } catch (parseError) {
+        console.error(
+          '[Perplexity API] Failed to parse extracted JSON',
+          parseError
+        );
+        throw new Error('Invalid JSON format in response');
+      }
     }
-
-    // Parse the JSON array
-    const articles = JSON.parse(jsonMatch[0]);
 
     // Validate the response
     if (!Array.isArray(articles)) {
@@ -127,7 +141,51 @@ async function searchPerplexityNews(
       })),
     };
   } catch (error) {
-    console.error(`Perplexity API error: ${error}`);
+    console.error('[Perplexity API] Error:', error);
+
+    // Implement retries
+    const maxRetries = 3;
+    let retryCount = 0;
+
+    while (retryCount < maxRetries) {
+      try {
+        console.log(
+          `[Perplexity API] Retry attempt ${retryCount + 1} of ${maxRetries}`
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, 1000 * (retryCount + 1))
+        ); // Exponential backoff
+
+        const retryResponse = await axios.post(
+          'https://api.perplexity.ai/chat/completions',
+          payload,
+          {
+            headers: {
+              Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        const retryContent = retryResponse.data.choices[0].message.content;
+        return {
+          articles: JSON.parse(retryContent),
+        };
+      } catch (retryError) {
+        console.error(
+          `[Perplexity API] Retry ${retryCount + 1} failed:`,
+          retryError
+        );
+        retryCount++;
+
+        if (retryCount === maxRetries) {
+          throw new Error(
+            `Failed to fetch news articles after ${maxRetries} attempts`
+          );
+        }
+      }
+    }
+
     throw new Error('Failed to fetch news articles from Perplexity API');
   }
 }
@@ -362,28 +420,67 @@ Industry: ${context.company.details.industry}`;
 
       const researchTime = Date.now() - startTime;
 
+      // Ensure articles are properly categorized
+      const categorizedArticles = await Promise.all(
+        articles.map(async (article) => {
+          const category = await this.categorizeArticle(article);
+          return { ...article, tags: [category] };
+        })
+      );
+
+      this.log('DEBUG', 'Final categorized articles', {
+        articles: categorizedArticles.map((a) => ({
+          title: a.title,
+          category: a.tags[0],
+        })),
+      });
+
+      // Create angle from research findings
+      const primaryCategory =
+        categorizedArticles[0]?.tags[0] || ArticleCategory.OTHER;
+      const angle = {
+        id: 'auto-generated',
+        title: `${company.name} Recent Developments`,
+        body:
+          categorizedArticles.length > 0
+            ? `Based on recent news, ${
+                company.name
+              } is showing significant developments in ${primaryCategory.replace(
+                /_/g,
+                ' '
+              )}.`
+            : `Research findings about ${company.name}'s recent activities and developments.`,
+      };
+
       // Update shared context with findings
       this.contextManager.setResearchFindings(
-        articles,
-        {
-          id: 'auto-generated',
-          title: `${company.name} Recent Developments`,
-          body: `Research findings about ${company.name}'s recent activities and developments.`,
-        },
-        articles.reduce((acc, article, index) => {
+        categorizedArticles,
+        angle,
+        categorizedArticles.reduce((acc, article, index) => {
           acc[article.id] = 1 - index / articles.length; // Higher relevance for earlier articles
           return acc;
         }, {} as Record<string, number>)
       );
 
-      // Record performance metrics
-      this.recordPerformance({
-        researchTime,
-      });
+      // Verify research findings were set
+      const context = this.getSharedContext();
+      if (!context.memory.researchFindings) {
+        throw new Error('Failed to set research findings in context');
+      }
 
       // Handoff to writer agent
       this.handoffToAgent('writer', 'Research completed successfully', {
-        articleCount: articles.length,
+        articles: categorizedArticles.map((article) => ({
+          id: article.id,
+          title: article.title,
+          category: article.tags[0],
+        })),
+        angle,
+      });
+
+      // Record performance metrics
+      this.recordPerformance({
+        researchTime,
       });
 
       return articles;
@@ -452,29 +549,56 @@ Industry: ${context.company.details.industry}`;
 
     // Categorize articles using autonomous analysis
     const categorizedArticles = await Promise.all(
-      articles.map(async (article) => ({
-        ...article,
-        tags: [await this.categorizeArticle(article)],
-      }))
+      articles.map(async (article) => {
+        const category = await this.categorizeArticle(article);
+        this.log('DEBUG', 'Article categorized', {
+          articleTitle: article.title,
+          category,
+        });
+        return {
+          ...article,
+          tags: [category],
+        };
+      })
     );
 
+    // Ensure all articles have valid tags
+    const validArticles = categorizedArticles.filter((article) => {
+      const hasValidTag =
+        article.tags.length > 0 && article.tags[0] in ArticleCategory;
+      if (!hasValidTag) {
+        this.log('WARN', 'Article missing valid tag', {
+          articleTitle: article.title,
+          tags: article.tags,
+        });
+      }
+      return hasValidTag;
+    });
+
+    if (validArticles.length === 0) {
+      this.log('ERROR', 'No articles with valid tags');
+      throw new Error('Failed to categorize articles');
+    }
+
     this.log('INFO', 'Articles categorized', {
-      totalArticles: categorizedArticles.length,
-      categoryCounts: categorizedArticles.reduce((acc, article) => {
+      totalArticles: validArticles.length,
+      categoryCounts: validArticles.reduce((acc, article) => {
         const category = article.tags[0];
         acc[category] = (acc[category] || 0) + 1;
         return acc;
       }, {} as Record<string, number>),
+      originalCount: articles.length,
+      filteredCount: categorizedArticles.length - validArticles.length,
     });
 
     // Update agent's article history
-    this.searchContext.articleHistory = categorizedArticles;
+    this.searchContext.articleHistory = validArticles;
 
     this.updatePhase('research', 'prioritizing', 0.9);
 
     this.log('DEBUG', 'Prioritizing articles');
     // Sort articles by category and relevance
-    const prioritizedArticles = this.prioritizeArticles(categorizedArticles);
+    const prioritizedArticles = this.prioritizeArticles(validArticles);
 
     this.log('INFO', 'Articles prioritized', {
       topArticle: prioritizedArticles[0]?.title,

@@ -274,29 +274,61 @@ export abstract class BaseAgent {
    */
   protected canProceed(): boolean {
     const context = this.getSharedContext();
+    const validPhases = this.getValidPhases();
+    const pendingSuggestions = this.getPendingSuggestions();
+    const handoffs = context.collaboration.handoffs;
+    const lastHandoff = handoffs[handoffs.length - 1];
+
     this.log('DEBUG', 'Checking if agent can proceed', {
       currentPhase: context.state.phase,
+      agentType: this.agentType,
       hasError: !!context.state.error,
-      pendingSuggestions: this.getPendingSuggestions().length,
+      pendingSuggestions: pendingSuggestions.length,
+      validPhases,
+      lastHandoff,
     });
 
     // Check if there's an active error
     if (context.state.error) {
+      this.log('DEBUG', 'Cannot proceed due to active error', {
+        error: context.state.error,
+      });
       return false;
     }
 
     // Check if we're in the correct phase
-    const validPhases = this.getValidPhases();
     if (!validPhases.includes(context.state.phase)) {
+      this.log('DEBUG', 'Cannot proceed due to invalid phase', {
+        currentPhase: context.state.phase,
+        validPhases,
+      });
       return false;
     }
 
     // Check if there are blocking suggestions
-    const pendingSuggestions = this.getPendingSuggestions();
     if (pendingSuggestions.length > 0) {
+      this.log('DEBUG', 'Cannot proceed due to pending suggestions', {
+        suggestions: pendingSuggestions,
+      });
       return false;
     }
 
+    // Check if we have a valid handoff (except for researcher who starts the chain)
+    if (this.agentType !== 'researcher') {
+      if (!lastHandoff || lastHandoff.to !== this.agentType) {
+        this.log('DEBUG', 'Cannot proceed due to invalid handoff', {
+          lastHandoff,
+          expectedTo: this.agentType,
+        });
+        return false;
+      }
+    }
+
+    this.log('DEBUG', 'Agent can proceed', {
+      phase: context.state.phase,
+      agentType: this.agentType,
+      handoff: lastHandoff,
+    });
     return true;
   }
 
