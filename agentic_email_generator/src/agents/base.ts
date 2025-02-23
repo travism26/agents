@@ -142,11 +142,11 @@ export abstract class BaseAgent {
   /**
    * Initiates a handoff to another agent
    */
-  protected handoffToAgent(
+  protected async handoffToAgent(
     targetAgent: string,
     reason: string,
     data: Record<string, any>
-  ): void {
+  ): Promise<void> {
     this.log('DEBUG', `Attempting handoff to ${targetAgent}`, {
       fromAgent: this.agentType,
       toAgent: targetAgent,
@@ -162,17 +162,48 @@ export abstract class BaseAgent {
       this.updatePhase('review', 'initial_review', 0.6);
     }
 
+    // Give time for phase update to be processed
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
     this.log('INFO', `Handing off to ${targetAgent}`, {
       reason,
       data,
+      phase: this.getSharedContext().state.phase,
     });
 
+    // Record the handoff
     this.contextManager.recordHandoff(
       this.agentType,
       targetAgent,
       reason,
       data
     );
+
+    // Verify handoff was recorded
+    const context = this.getSharedContext();
+    const lastHandoff =
+      context.collaboration.handoffs[context.collaboration.handoffs.length - 1];
+
+    if (
+      !lastHandoff ||
+      lastHandoff.from !== this.agentType ||
+      lastHandoff.to !== targetAgent
+    ) {
+      this.log('ERROR', 'Handoff verification failed', {
+        lastHandoff,
+        expectedFrom: this.agentType,
+        expectedTo: targetAgent,
+      });
+      throw new Error(
+        `Failed to record handoff from ${this.agentType} to ${targetAgent}`
+      );
+    }
+
+    this.log('DEBUG', 'Handoff completed successfully', {
+      from: this.agentType,
+      to: targetAgent,
+      handoffCount: context.collaboration.handoffs.length,
+    });
   }
 
   /**
@@ -247,26 +278,61 @@ export abstract class BaseAgent {
       context.collaboration.handoffs[context.collaboration.handoffs.length - 1];
 
     if (!lastHandoff) {
-      this.log('DEBUG', 'No handoff found');
+      this.log('ERROR', 'No handoff found in context', {
+        handoffs: context.collaboration.handoffs,
+      });
       return false;
     }
 
-    // Only check if the required data fields are present
-    const isValid =
-      lastHandoff.from === fromAgent &&
-      lastHandoff.to === this.agentType &&
-      Object.entries(data).every(
-        ([key, value]) =>
-          lastHandoff.data[key] !== undefined &&
-          typeof lastHandoff.data[key] === typeof value
-      );
+    if (lastHandoff.from !== fromAgent) {
+      this.log('ERROR', 'Invalid handoff source', {
+        expected: fromAgent,
+        actual: lastHandoff.from,
+      });
+      return false;
+    }
 
-    this.log('DEBUG', `Handoff validation result: ${isValid}`, {
-      expected: { from: fromAgent, to: this.agentType, data },
-      actual: lastHandoff,
+    if (lastHandoff.to !== this.agentType) {
+      this.log('ERROR', 'Invalid handoff destination', {
+        expected: this.agentType,
+        actual: lastHandoff.to,
+      });
+      return false;
+    }
+
+    // Validate required data fields based on agent type
+    if (this.agentType === 'writer') {
+      // Basic validation of articles array and angle object
+      if (
+        !lastHandoff.data.articles ||
+        !Array.isArray(lastHandoff.data.articles) ||
+        !lastHandoff.data.angle ||
+        typeof lastHandoff.data.angle !== 'object'
+      ) {
+        this.log('ERROR', 'Missing or invalid data structure in handoff', {
+          data: lastHandoff.data,
+        });
+        return false;
+      }
+
+      // Log validation details
+      this.log('DEBUG', 'Handoff data validation details', {
+        hasArticles: !!lastHandoff.data.articles,
+        articleCount: lastHandoff.data.articles.length,
+        hasAngle: !!lastHandoff.data.angle,
+        angleFields: lastHandoff.data.angle
+          ? Object.keys(lastHandoff.data.angle)
+          : [],
+      });
+    }
+
+    this.log('INFO', 'Handoff validation successful', {
+      from: fromAgent,
+      to: this.agentType,
+      dataFields: Object.keys(lastHandoff.data),
     });
 
-    return isValid;
+    return true;
   }
 
   /**

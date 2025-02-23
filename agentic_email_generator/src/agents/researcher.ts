@@ -108,20 +108,36 @@ async function searchPerplexityNews(
       // First try to parse the entire response as JSON
       articles = JSON.parse(rawContent);
     } catch {
-      // If that fails, try to extract JSON array
-      const jsonMatch = rawContent.match(/\[.*\]/s);
-      if (!jsonMatch) {
-        console.error('[Perplexity API] Failed to extract JSON from response');
-        throw new Error('No JSON array found in response');
-      }
-      try {
-        articles = JSON.parse(jsonMatch[0]);
-      } catch (parseError) {
-        console.error(
-          '[Perplexity API] Failed to parse extracted JSON',
-          parseError
-        );
-        throw new Error('Invalid JSON format in response');
+      // If that fails, try to extract JSON array from markdown code block
+      const codeBlockMatch = rawContent.match(/```json\s*(\[[\s\S]*?\])\s*```/);
+      if (codeBlockMatch) {
+        try {
+          articles = JSON.parse(codeBlockMatch[1]);
+        } catch (parseError) {
+          console.error(
+            '[Perplexity API] Failed to parse JSON from code block',
+            parseError
+          );
+          throw new Error('Invalid JSON format in code block');
+        }
+      } else {
+        // If no code block, try to extract any JSON array
+        const jsonMatch = rawContent.match(/\[[\s\S]*?\]/);
+        if (!jsonMatch) {
+          console.error(
+            '[Perplexity API] Failed to extract JSON from response'
+          );
+          throw new Error('No JSON array found in response');
+        }
+        try {
+          articles = JSON.parse(jsonMatch[0]);
+        } catch (parseError) {
+          console.error(
+            '[Perplexity API] Failed to parse extracted JSON',
+            parseError
+          );
+          throw new Error('Invalid JSON format in response');
+        }
       }
     }
 
@@ -168,8 +184,60 @@ async function searchPerplexityNews(
         );
 
         const retryContent = retryResponse.data.choices[0].message.content;
+        let retryArticles;
+        try {
+          // First try to parse the entire response as JSON
+          retryArticles = JSON.parse(retryContent);
+        } catch {
+          // If that fails, try to extract JSON array from markdown code block
+          const codeBlockMatch = retryContent.match(
+            /```json\s*(\[[\s\S]*?\])\s*```/
+          );
+          if (codeBlockMatch) {
+            try {
+              retryArticles = JSON.parse(codeBlockMatch[1]);
+            } catch (parseError) {
+              console.error(
+                '[Perplexity API] Failed to parse JSON from code block',
+                parseError
+              );
+              throw new Error('Invalid JSON format in code block');
+            }
+          } else {
+            // If no code block, try to extract any JSON array
+            const jsonMatch = retryContent.match(/\[[\s\S]*?\]/);
+            if (!jsonMatch) {
+              console.error(
+                '[Perplexity API] Failed to extract JSON from response'
+              );
+              throw new Error('No JSON array found in response');
+            }
+            try {
+              retryArticles = JSON.parse(jsonMatch[0]);
+            } catch (parseError) {
+              console.error(
+                '[Perplexity API] Failed to parse extracted JSON',
+                parseError
+              );
+              throw new Error('Invalid JSON format in response');
+            }
+          }
+        }
+
+        // Validate the response
+        if (!Array.isArray(retryArticles)) {
+          throw new Error('Invalid API response format');
+        }
+
         return {
-          articles: JSON.parse(retryContent),
+          articles: retryArticles.map((article: any, index: number) => ({
+            id: article.id || String(index + 1),
+            title: article.title,
+            url: article.url,
+            publishedAt: article.publishedAt || new Date().toISOString(),
+            summary: article.summary,
+            source: article.source,
+          })),
         };
       } catch (retryError) {
         console.error(
@@ -435,11 +503,11 @@ Industry: ${context.company.details.industry}`;
         })),
       });
 
-      // Create angle from research findings
+      // Create angle from research findings with unique ID
       const primaryCategory =
         categorizedArticles[0]?.tags[0] || ArticleCategory.OTHER;
       const angle = {
-        id: 'auto-generated',
+        id: `angle-${Date.now()}`,
         title: `${company.name} Recent Developments`,
         body:
           categorizedArticles.length > 0
@@ -453,7 +521,7 @@ Industry: ${context.company.details.industry}`;
       };
 
       // Update shared context with findings
-      this.contextManager.setResearchFindings(
+      await this.contextManager.setResearchFindings(
         categorizedArticles,
         angle,
         categorizedArticles.reduce((acc, article, index) => {
@@ -462,21 +530,72 @@ Industry: ${context.company.details.industry}`;
         }, {} as Record<string, number>)
       );
 
+      // Log research findings for debugging
+      this.log('DEBUG', 'Research findings set', {
+        articleCount: categorizedArticles.length,
+        angle,
+        researchFindings: this.getSharedContext().memory.researchFindings,
+      });
+
       // Verify research findings were set
       const context = this.getSharedContext();
       if (!context.memory.researchFindings) {
         throw new Error('Failed to set research findings in context');
       }
 
-      // Handoff to writer agent
-      this.handoffToAgent('writer', 'Research completed successfully', {
+      // Verify data completeness
+      if (!categorizedArticles || categorizedArticles.length === 0) {
+        this.log('ERROR', 'Invalid handoff data - missing articles', {
+          articles: categorizedArticles,
+        });
+        throw new Error('Cannot handoff - no articles available');
+      }
+
+      if (!angle || !angle.title || !angle.body) {
+        this.log('ERROR', 'Invalid handoff data - invalid angle', {
+          angle,
+        });
+        throw new Error('Cannot handoff - invalid angle data');
+      }
+
+      // Prepare handoff data with complete article information
+      const handoffData = {
         articles: categorizedArticles.map((article) => ({
           id: article.id,
           title: article.title,
           category: article.tags[0],
+          url: article.url,
+          publishedAt: article.publishedAt,
+          summary: article.summary,
+          source: article.source,
+          companyName: article.companyName,
+          tags: article.tags,
         })),
-        angle,
+        angle: {
+          id: angle.id,
+          title: angle.title,
+          body: angle.body,
+        },
+      };
+
+      // Log handoff data for debugging
+      this.log('DEBUG', 'Preparing handoff data', {
+        articleCount: handoffData.articles.length,
+        angle: handoffData.angle,
+        dataStructure: {
+          hasArticles: !!handoffData.articles,
+          hasAngle: !!handoffData.angle,
+          articleFields: Object.keys(handoffData.articles[0] || {}),
+          angleFields: Object.keys(handoffData.angle),
+        },
       });
+
+      // Handoff to writer agent with validated data
+      await this.handoffToAgent(
+        'writer',
+        'Research completed successfully',
+        handoffData
+      );
 
       // Record performance metrics
       this.recordPerformance({

@@ -117,54 +117,47 @@ export class ReviewerAgent extends BaseAgent {
 
     // Get shared context state
     const sharedContext = this.getSharedContext();
-    const validPhases = this.getValidPhases();
-    const pendingSuggestions = this.getPendingSuggestions();
-    const handoffs = sharedContext.collaboration.handoffs;
-    const lastHandoff = handoffs[handoffs.length - 1];
 
-    this.log('DEBUG', 'Checking review prerequisites', {
+    this.log('DEBUG', 'Starting review process', {
       currentPhase: sharedContext.state.phase,
-      validPhases,
-      pendingSuggestions: pendingSuggestions.length,
-      lastHandoff,
-      hasError: !!sharedContext.state.error,
+      handoffs: sharedContext.collaboration.handoffs,
+      pendingSuggestions: this.getPendingSuggestions().length,
     });
+
+    // Validate handoff from writer
+    if (!this.validateHandoff('writer', {})) {
+      this.log('ERROR', 'Invalid handoff from writer', {
+        handoffs: sharedContext.collaboration.handoffs,
+        phase: sharedContext.state.phase,
+      });
+      throw new Error('Invalid or missing handoff from writer agent');
+    }
+
+    // Log review context
+    this.log('DEBUG', 'Review context', {
+      draftLength: draft.length,
+      contactName: emailContext.contact.name,
+      articleCount: emailContext.articles.length,
+      revisionCount: emailContext.revisionCount,
+    });
+
+    // Ensure we're in the review phase
+    if (sharedContext.state.phase !== 'review') {
+      this.log('DEBUG', 'Transitioning to review phase', {
+        fromPhase: sharedContext.state.phase,
+      });
+      this.updatePhase('review', 'initial_review', 0.6);
+    }
 
     // Verify we can proceed
     if (!this.canProceed()) {
-      const util = require('util');
-      const errorDetails = {
-        invalidPhase: !validPhases.includes(sharedContext.state.phase),
-        hasPendingSuggestions: pendingSuggestions.length > 0,
-        invalidHandoff: !lastHandoff || lastHandoff.to !== this.agentType,
-        hasError: !!sharedContext.state.error,
-      };
-      console.log(
-        'Cannot proceed with review',
-        util.inspect(errorDetails, false, null, true),
-        lastHandoff,
-        sharedContext.state.phase,
-        validPhases,
-        pendingSuggestions,
-        sharedContext.state.error,
-        lastHandoff,
-        this.agentType
-      );
-
       this.log('ERROR', 'Cannot proceed with review', {
-        errorDetails,
-        currentState: {
-          phase: sharedContext.state.phase,
-          handoff: lastHandoff,
-          error: sharedContext.state.error,
-        },
+        phase: sharedContext.state.phase,
+        pendingSuggestions: this.getPendingSuggestions(),
+        error: sharedContext.state.error,
       });
-
       throw new Error(
-        `Cannot proceed with review - ${Object.entries(errorDetails)
-          .filter(([, isError]) => isError)
-          .map(([reason]) => reason)
-          .join(', ')}`
+        'Cannot proceed with review - invalid state or blocking suggestions'
       );
     }
 

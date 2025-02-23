@@ -9,6 +9,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { BaseAgent } from './base';
 import { ContextManager, SharedContext } from '../models/context';
 import dotenv from 'dotenv';
+import util from 'util';
 
 // Load environment variables
 dotenv.config();
@@ -374,6 +375,19 @@ Common patterns: ${patterns.join(', ')}`;
     // Get initial context state
     const context = this.getSharedContext();
 
+    console.log(
+      'Initial Context State:',
+      util.inspect(
+        {
+          phase: context.state.phase,
+          handoffs: context.collaboration.handoffs,
+          suggestions: context.collaboration.suggestions,
+          researchFindings: context.memory.researchFindings,
+        },
+        { depth: 4, colors: true }
+      )
+    );
+
     this.log('DEBUG', 'Initial context state', {
       phase: context.state.phase,
       handoffs: context.collaboration.handoffs,
@@ -390,13 +404,14 @@ Common patterns: ${patterns.join(', ')}`;
       this.updatePhase('writing', 'initial_draft', 0.3);
     }
 
-    // Get updated context after phase transition
+    // Get updated context and validate handoff
     const updatedContext = this.getSharedContext();
-    const lastHandoff =
-      updatedContext.collaboration.handoffs[
-        updatedContext.collaboration.handoffs.length - 1
-      ];
     const researchFindings = updatedContext.memory.researchFindings;
+
+    console.log(
+      'Research Findings Details:',
+      util.inspect(researchFindings, { depth: 5, colors: true })
+    );
 
     this.log('DEBUG', 'Updated context state', {
       phase: updatedContext.state.phase,
@@ -405,15 +420,15 @@ Common patterns: ${patterns.join(', ')}`;
       researchFindings: !!researchFindings,
     });
 
-    // Verify handoff
-    if (!lastHandoff || lastHandoff.from !== 'researcher') {
-      this.log('ERROR', 'Invalid handoff state', {
+    // Validate handoff from researcher
+    if (!this.validateHandoff('researcher', { articles: [], angle: {} })) {
+      const lastHandoff =
+        this.getSharedContext().collaboration.handoffs.slice(-1)[0];
+      this.log('ERROR', 'Handoff validation failed', {
         lastHandoff,
-        expectedFrom: 'researcher',
+        handoffData: lastHandoff?.data,
       });
-      throw new Error(
-        'Invalid handoff - expected handoff from researcher agent'
-      );
+      throw new Error('Invalid or missing handoff from researcher agent');
     }
 
     // Verify research findings
@@ -483,9 +498,32 @@ Common patterns: ${patterns.join(', ')}`;
       );
 
       // Analyze articles and create narrative
+      console.log(
+        'Analyzing Articles Input:',
+        util.inspect(
+          {
+            articles: newsArticles.map((a) => ({ id: a.id, title: a.title })),
+            goal: emailOptions.goal,
+          },
+          { depth: 3, colors: true }
+        )
+      );
+
       const { narrative, selectedArticles } = await this.analyzeArticles(
         newsArticles,
         emailOptions.goal
+      );
+
+      console.log(
+        'Article Analysis Result:',
+        util.inspect(
+          {
+            narrative,
+            selectedArticles,
+            articleCount: selectedArticles.length,
+          },
+          { depth: 3, colors: true }
+        )
       );
 
       this.log('DEBUG', 'Starting content generation');
@@ -537,6 +575,18 @@ Common patterns: ${patterns.join(', ')}`;
       // Create draft
       const draft = { content, subject, metadata };
 
+      console.log(
+        'Generated Draft Details:',
+        util.inspect(
+          {
+            subject,
+            contentPreview: content.substring(0, 100) + '...',
+            metadata,
+          },
+          { depth: 4, colors: true }
+        )
+      );
+
       // Update context
       this.writerContext.previousEmails = [
         ...(this.writerContext.previousEmails || []),
@@ -563,8 +613,8 @@ Common patterns: ${patterns.join(', ')}`;
         { wordCount, style: finalStyle }
       );
 
-      // Handoff to reviewer agent
-      this.handoffToAgent('reviewer', 'Draft completed successfully', {
+      // Prepare handoff data with complete draft and context
+      const handoffData = {
         draft: draft.content,
         emailContext: {
           contact: this.getSharedContext().contact,
@@ -572,7 +622,63 @@ Common patterns: ${patterns.join(', ')}`;
           angle: researchFindings.angle,
           revisionCount: this.getSharedContext().memory.draftHistory.length,
         },
+      };
+
+      // Log handoff data structure
+      this.log('DEBUG', 'Handoff data structure', {
+        hasContact: !!handoffData.emailContext.contact,
+        hasArticles: !!handoffData.emailContext.articles,
+        hasAngle: !!handoffData.emailContext.angle,
+        revisionCount: handoffData.emailContext.revisionCount,
+        draftLength: handoffData.draft.length,
       });
+
+      // Log handoff attempt
+      this.log('INFO', 'Preparing handoff to reviewer', {
+        draftLength: draft.content.length,
+        articleCount: researchFindings.articles.length,
+        revisionCount: this.getSharedContext().memory.draftHistory.length,
+      });
+
+      // Update phase before handoff
+      this.updatePhase('review', 'initial_review', 0.6);
+
+      // Give time for phase update to be processed
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      console.log(
+        'Preparing Handoff Data:',
+        util.inspect(handoffData, { depth: 5, colors: true })
+      );
+
+      // Handoff to reviewer agent
+      await this.handoffToAgent(
+        'reviewer',
+        'Draft completed successfully',
+        handoffData
+      );
+
+      // Give time for handoff to be processed
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // No need to verify handoff - it's handled in handoffToAgent
+      const finalContext = this.getSharedContext();
+      const lastHandoff =
+        finalContext.collaboration.handoffs[
+          finalContext.collaboration.handoffs.length - 1
+        ];
+      if (
+        !lastHandoff ||
+        lastHandoff.from !== 'writer' ||
+        lastHandoff.to !== 'reviewer'
+      ) {
+        this.log('ERROR', 'Handoff verification failed', {
+          lastHandoff,
+          expectedFrom: 'writer',
+          expectedTo: 'reviewer',
+        });
+        throw new Error('Failed to record handoff to reviewer agent');
+      }
 
       return draft;
     } catch (error) {

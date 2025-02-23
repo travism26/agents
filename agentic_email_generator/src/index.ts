@@ -81,19 +81,26 @@ export async function generateEmails(
       };
     }
 
-    // Create angle based on research findings
-    console.log('Creating angle');
-    // This might need to be determined by the research agent based on the goal in the emailOptions.
-    const angle: Angle = {
-      id: uuidv4(),
-      title: 'Business Development Opportunity',
-      body: `Reaching out regarding potential collaboration opportunities based on ${company.name}'s recent developments.`,
-    };
-
     // Step 2: Writing phase - Generate initial email draft
+    // Note: Angle is now created by the researcher agent
     console.log('Generating initial draft');
     contextManager.updatePhase('writing', 'initial_draft', 0.3);
-    await new Promise((resolve) => setTimeout(resolve, 100)); // Give time for phase update
+    // Give time for phase update and ensure handoff is processed
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Verify handoff from researcher to writer
+    const handoffs = contextManager.getContext().collaboration.handoffs;
+    const lastHandoff = handoffs[handoffs.length - 1];
+    if (
+      !lastHandoff ||
+      lastHandoff.from !== 'researcher' ||
+      lastHandoff.to !== 'writer'
+    ) {
+      throw new Error(
+        'Invalid handoff chain - expected handoff from researcher to writer'
+      );
+    }
+
     const initialDraft = await writer.compose(
       user,
       contact,
@@ -104,8 +111,6 @@ export async function generateEmails(
 
     // Step 3: Review phase - Begin review and revision loop
     console.log('Starting review phase');
-    contextManager.updatePhase('review', 'initial_review', 0.6);
-    await new Promise((resolve) => setTimeout(resolve, 100)); // Give time for phase update
     let currentDraft = initialDraft.content;
     let revisionCount = 0;
     let finalDraft: string | null = null;
@@ -122,13 +127,28 @@ export async function generateEmails(
         );
       }
 
+      // Ensure we're in review phase before proceeding
+      contextManager.updatePhase('review', 'initial_review', 0.6);
+      await new Promise((resolve) => setTimeout(resolve, 100)); // Give time for phase update
+
       console.log('Reviewing draft');
+
+      // Get angle from research findings
+      const researchFindings =
+        contextManager.getContext().memory.researchFindings;
+      console.log('Research findings:', researchFindings);
+      if (!researchFindings || !researchFindings.angle) {
+        throw new Error('Research findings or angle not found in context');
+      }
+      console.log('mtravis - 1:');
+
       reviewResult = await reviewer.review(currentDraft, {
         contact,
         articles: newsArticles,
-        angle,
+        angle: researchFindings.angle,
         revisionCount,
       });
+
       console.log('Review completed');
       console.log('Review result:', reviewResult);
       if (reviewResult.approved) {
@@ -136,6 +156,7 @@ export async function generateEmails(
         finalDraft = currentDraft;
         break;
       }
+      console.log('mtravis - 2:');
 
       if (revisionCount >= 3) {
         console.log('Failed to meet quality standards');
@@ -154,7 +175,7 @@ export async function generateEmails(
           },
         };
       }
-
+      console.log('mtravis - 3:');
       // Generate new draft incorporating review suggestions
       console.log('Generating revised draft');
       const revisedDraft = await writer.compose(
@@ -174,6 +195,7 @@ export async function generateEmails(
       revisionCount++;
     } while (revisionCount < 3);
 
+    console.log('mtravis - 4:');
     if (!finalDraft) {
       console.log('Failed to generate acceptable email draft');
       contextManager.updatePhase('failed');
@@ -197,9 +219,16 @@ export async function generateEmails(
     console.log('Completion phase updated');
 
     // Create successful generation record
+    // Get angle from research findings for the final record
+    const researchFindings =
+      contextManager.getContext().memory.researchFindings;
+    if (!researchFindings || !researchFindings.angle) {
+      throw new Error('Research findings or angle not found in context');
+    }
+
     const generatedEmail: GeneratedEmail = {
       _id: uuidv4(),
-      angle,
+      angle: researchFindings.angle,
       newsArticles,
       generatedEmailBody: finalDraft,
     };

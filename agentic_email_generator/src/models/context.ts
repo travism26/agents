@@ -243,13 +243,37 @@ export class ContextManager {
     angle: Angle,
     relevanceScores: Record<string, number>
   ): void {
+    // Validate inputs
+    if (!articles || !Array.isArray(articles) || articles.length === 0) {
+      this.addLog({
+        timestamp: new Date(),
+        level: 'ERROR',
+        agent: 'system',
+        message: 'Invalid research findings - missing or empty articles array',
+        metadata: { articles },
+      });
+      throw new Error('Invalid research findings - articles array is required');
+    }
+
+    if (!angle || !angle.title || !angle.body) {
+      this.addLog({
+        timestamp: new Date(),
+        level: 'ERROR',
+        agent: 'system',
+        message: 'Invalid research findings - invalid angle object',
+        metadata: { angle },
+      });
+      throw new Error('Invalid research findings - angle object is required');
+    }
+
+    // Set research findings
     this.context.memory.researchFindings = {
       articles,
       angle,
       relevanceScores,
     };
 
-    // Log research findings update
+    // Log detailed research findings update
     this.addLog({
       timestamp: new Date(),
       level: 'INFO',
@@ -257,10 +281,37 @@ export class ContextManager {
       message: 'Research findings updated',
       metadata: {
         articleCount: articles.length,
-        angle: angle.title,
+        articles: articles.map((a) => ({
+          id: a.id,
+          title: a.title,
+          tags: a.tags,
+        })),
+        angle: {
+          title: angle.title,
+          body: angle.body,
+        },
         phase: this.context.state.phase,
+        handoffCount: this.context.collaboration.handoffs.length,
+        lastHandoff:
+          this.context.collaboration.handoffs[
+            this.context.collaboration.handoffs.length - 1
+          ],
       },
     });
+
+    // Verify research findings were set
+    if (!this.context.memory.researchFindings) {
+      this.addLog({
+        timestamp: new Date(),
+        level: 'ERROR',
+        agent: 'system',
+        message: 'Failed to set research findings',
+        metadata: {
+          currentState: this.context.memory.researchFindings,
+        },
+      });
+      throw new Error('Failed to set research findings in context');
+    }
   }
 
   /**
