@@ -179,6 +179,24 @@ export class ContextManager {
     if (subPhase) this.context.state.subPhase = subPhase;
     if (progress !== undefined) this.context.state.progress = progress;
 
+    // Ensure phase update is reflected in context
+    const updatedPhase = this.context.state.phase;
+    if (updatedPhase !== phase) {
+      this.addLog({
+        timestamp: new Date(),
+        level: 'ERROR',
+        agent: 'system',
+        message: 'Phase update failed',
+        metadata: {
+          expectedPhase: phase,
+          actualPhase: updatedPhase,
+          subPhase,
+          progress,
+        },
+      });
+      throw new Error(`Failed to update phase to ${phase}`);
+    }
+
     // Log phase transition
     this.addLog({
       timestamp: new Date(),
@@ -205,6 +223,18 @@ export class ContextManager {
     reason: string,
     data: Record<string, any>
   ): void {
+    // Validate handoff data
+    if (!data || typeof data !== 'object') {
+      this.addLog({
+        timestamp: new Date(),
+        level: 'ERROR',
+        agent: 'system',
+        message: 'Invalid handoff data',
+        metadata: { from, to, data },
+      });
+      throw new Error('Invalid handoff data structure');
+    }
+
     const handoff = {
       from,
       to,
@@ -213,7 +243,27 @@ export class ContextManager {
       data,
     };
 
+    // Record handoff
     this.context.collaboration.handoffs.push(handoff);
+
+    // Verify handoff was recorded
+    const lastHandoff =
+      this.context.collaboration.handoffs[
+        this.context.collaboration.handoffs.length - 1
+      ];
+    if (!lastHandoff || lastHandoff.from !== from || lastHandoff.to !== to) {
+      this.addLog({
+        timestamp: new Date(),
+        level: 'ERROR',
+        agent: 'system',
+        message: 'Handoff recording failed',
+        metadata: {
+          expected: { from, to },
+          actual: lastHandoff,
+        },
+      });
+      throw new Error('Failed to record handoff in context');
+    }
 
     // Add log entry for handoff
     this.addLog({

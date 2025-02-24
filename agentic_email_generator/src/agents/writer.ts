@@ -587,11 +587,8 @@ Common patterns: ${patterns.join(', ')}`;
         )
       );
 
-      // Update context
-      this.writerContext.previousEmails = [
-        ...(this.writerContext.previousEmails || []),
-        draft,
-      ];
+      // Add draft to history before handoff
+      this.contextManager.addDraftVersion(draft.content);
 
       const writingTime = Date.now() - startTime;
       this.log('INFO', 'Email composition completed', {
@@ -613,8 +610,11 @@ Common patterns: ${patterns.join(', ')}`;
         { wordCount, style: finalStyle }
       );
 
-      // Prepare handoff data with complete draft and context
-      const handoffData = {
+      // Give time for any pending operations
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Handoff to reviewer agent with complete draft data
+      await this.handoffToAgent('reviewer', 'Draft completed successfully', {
         draft: draft.content,
         emailContext: {
           contact: this.getSharedContext().contact,
@@ -622,41 +622,7 @@ Common patterns: ${patterns.join(', ')}`;
           angle: researchFindings.angle,
           revisionCount: this.getSharedContext().memory.draftHistory.length,
         },
-      };
-
-      // Log handoff data structure
-      this.log('DEBUG', 'Handoff data structure', {
-        hasContact: !!handoffData.emailContext.contact,
-        hasArticles: !!handoffData.emailContext.articles,
-        hasAngle: !!handoffData.emailContext.angle,
-        revisionCount: handoffData.emailContext.revisionCount,
-        draftLength: handoffData.draft.length,
       });
-
-      // Log handoff attempt
-      this.log('INFO', 'Preparing handoff to reviewer', {
-        draftLength: draft.content.length,
-        articleCount: researchFindings.articles.length,
-        revisionCount: this.getSharedContext().memory.draftHistory.length,
-      });
-
-      // Update phase before handoff
-      this.updatePhase('review', 'initial_review', 0.6);
-
-      // Give time for phase update to be processed
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      console.log(
-        'Preparing Handoff Data:',
-        util.inspect(handoffData, { depth: 5, colors: true })
-      );
-
-      // Handoff to reviewer agent
-      await this.handoffToAgent(
-        'reviewer',
-        'Draft completed successfully',
-        handoffData
-      );
 
       // Give time for handoff to be processed
       await new Promise((resolve) => setTimeout(resolve, 100));

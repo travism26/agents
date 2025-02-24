@@ -9,6 +9,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { BaseAgent } from './base';
 import { ContextManager, SharedContext } from '../models/context';
 import dotenv from 'dotenv';
+import util from 'util';
 
 // Load environment variables
 dotenv.config();
@@ -85,7 +86,7 @@ export class ReviewerAgent extends BaseAgent {
    * Implements fallback strategy for review failures
    */
   protected async getFallbackStrategy(): Promise<ReviewResult> {
-    this.log('INFO', 'Initiating fallback review strategy');
+    console.log('INFO - Initiating fallback review strategy');
     // Return a conservative review result
     return {
       approved: false,
@@ -109,7 +110,7 @@ export class ReviewerAgent extends BaseAgent {
     emailContext: EmailContext,
     criteria: Partial<QualityCriteria> = {}
   ): Promise<ReviewResult> {
-    this.log('INFO', 'Starting email review', {
+    console.log('INFO - Starting email review', {
       contactName: emailContext.contact.name,
       revisionCount: emailContext.revisionCount,
       draftLength: draft.length,
@@ -118,40 +119,50 @@ export class ReviewerAgent extends BaseAgent {
     // Get shared context state
     const sharedContext = this.getSharedContext();
 
-    this.log('DEBUG', 'Starting review process', {
+    console.log('DEBUG - Starting review process', {
       currentPhase: sharedContext.state.phase,
       handoffs: sharedContext.collaboration.handoffs,
       pendingSuggestions: this.getPendingSuggestions().length,
     });
 
-    // Validate handoff from writer
-    if (!this.validateHandoff('writer', {})) {
-      this.log('ERROR', 'Invalid handoff from writer', {
-        handoffs: sharedContext.collaboration.handoffs,
+    // Wait for phase transition to complete
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Validate handoff from writer with expected data structure
+    if (
+      !this.validateHandoff('writer', {
+        draft: '',
+        emailContext: {
+          contact: {},
+          articles: [],
+          angle: {},
+          revisionCount: 0,
+        },
+      })
+    ) {
+      console.error('ERROR - Invalid handoff from writer', {
         phase: sharedContext.state.phase,
+        handoffs: sharedContext.collaboration.handoffs,
+        pendingSuggestions: this.getPendingSuggestions().length,
       });
+      console.error(
+        'mtravis - handoffs:',
+        util.inspect(sharedContext.collaboration.handoffs, false, null, true)
+      );
       throw new Error('Invalid or missing handoff from writer agent');
     }
 
     // Log review context
-    this.log('DEBUG', 'Review context', {
+    console.log('DEBUG - Review context', {
       draftLength: draft.length,
       contactName: emailContext.contact.name,
       articleCount: emailContext.articles.length,
       revisionCount: emailContext.revisionCount,
     });
 
-    // Ensure we're in the review phase
-    if (sharedContext.state.phase !== 'review') {
-      this.log('DEBUG', 'Transitioning to review phase', {
-        fromPhase: sharedContext.state.phase,
-      });
-      this.updatePhase('review', 'initial_review', 0.6);
-    }
-
     // Verify we can proceed
     if (!this.canProceed()) {
-      this.log('ERROR', 'Cannot proceed with review', {
+      console.error('ERROR - Cannot proceed with review', {
         phase: sharedContext.state.phase,
         pendingSuggestions: this.getPendingSuggestions(),
         error: sharedContext.state.error,
@@ -165,7 +176,7 @@ export class ReviewerAgent extends BaseAgent {
 
     // Check revision limit
     if (emailContext.revisionCount >= this.MAX_REVISIONS) {
-      this.log('WARN', 'Maximum revision limit reached', {
+      console.warn('WARN - Maximum revision limit reached', {
         revisionCount: emailContext.revisionCount,
         maxRevisions: this.MAX_REVISIONS,
       });
@@ -184,13 +195,13 @@ export class ReviewerAgent extends BaseAgent {
 
       // Phase 1: Initial Analysis
       this.updatePhase('review', 'initial_analysis', 0.2);
-      this.log('DEBUG', 'Starting initial analysis');
+      console.log('DEBUG - Starting initial analysis');
       const initialAnalysis = await this.performInitialAnalysis(
         draft,
         emailContext
       );
 
-      this.log('INFO', 'Initial analysis completed', {
+      console.log('INFO - Initial analysis completed', {
         score: initialAnalysis.score,
         toneScore: initialAnalysis.analysis?.toneScore,
         contentRelevance: initialAnalysis.analysis?.contentRelevance,
@@ -206,7 +217,7 @@ export class ReviewerAgent extends BaseAgent {
 
       // Phase 2: Detailed Review
       this.updatePhase('review', 'detailed_review', 0.4);
-      this.log('DEBUG', 'Starting detailed review');
+      console.log('DEBUG - Starting detailed review');
       const detailedReview = await this.performDetailedReview(
         draft,
         emailContext,
@@ -217,7 +228,7 @@ export class ReviewerAgent extends BaseAgent {
       // Phase 3: Improvement Generation (if needed)
       let improvements;
       if (detailedReview.score < 80) {
-        this.log('INFO', 'Draft requires improvements', {
+        console.log('INFO - Draft requires improvements', {
           score: detailedReview.score,
           improvementAreas: detailedReview.analysis?.improvementAreas,
         });
@@ -235,13 +246,13 @@ export class ReviewerAgent extends BaseAgent {
 
       // Phase 4: Final Validation
       this.updatePhase('review', 'final_validation', 0.8);
-      this.log('DEBUG', 'Starting final validation');
+      console.log('DEBUG - Starting final validation');
       const finalReview = await this.validateReview(
         detailedReview,
         emailContext
       );
 
-      this.log('INFO', 'Review validation completed', {
+      console.log('INFO - Review validation completed', {
         approved: finalReview.approved,
         finalScore: finalReview.score,
         suggestionCount: finalReview.suggestions.length,
@@ -278,6 +289,7 @@ export class ReviewerAgent extends BaseAgent {
 
       return finalReview;
     } catch (error) {
+      console.log('mtravis - error:', error);
       // Attempt recovery using fallback strategy
       return this.handleError(
         async () => {
@@ -295,29 +307,57 @@ export class ReviewerAgent extends BaseAgent {
     draft: string,
     context: EmailContext
   ): Promise<ReviewResult> {
-    this.log('DEBUG', 'Performing initial analysis', {
+    console.log('DEBUG - Performing initial analysis', {
       draftLength: draft.length,
       contactTitle: context.contact.title,
     });
-    const prompt = `Perform a quick initial analysis of this email draft.
 
-Draft:
-${draft}
+    const prompt = `
+    <Purpose>
+    Perform a quick initial analysis of this email draft.
+    </Purpose>
 
-Context:
-- Contact: ${context.contact.name} (${context.contact.title})
-- Goal: ${context.angle.title}
+    <Draft>
+    ${draft}
+    </Draft>
 
-Previous Reviews:
-${this.summarizePreviousReviews()}
+    <Context>
+      <Contact>
+        ${context.contact.name} (${context.contact.title})
+      </Contact>
+      <Goal>${context.angle.title}</Goal>
+      <PreviousReviews>
+        ${this.summarizePreviousReviews()}
+      </PreviousReviews>
+    </Context>
 
-Provide a JSON response with:
-- score: Initial quality score (0-100)
-- analysis: {
-    toneScore: 0-100,
-    contentRelevance: 0-100,
-    improvementAreas: Array of major areas needing attention
-  }`;
+    <Instructions>
+      <Instruction>
+        Provide a quick initial assessment with:
+        <Analysis>
+          <Score>Initial quality score (0-100)</Score>
+          <Components>
+            <ToneScore>0-100</ToneScore>
+            <ContentRelevance>0-100</ContentRelevance>
+            <ImprovementAreas>Array of major areas needing attention</ImprovementAreas>
+          </Components>
+        </Analysis>
+      </Instruction>
+    </Instructions>
+
+    <ResponseFormat>
+    Return a valid JSON object with exactly the following keys and nothing else:
+    {
+      "score": "Initial quality score (0-100)",
+      "analysis": {
+        "toneScore": "0-100",
+        "contentRelevance": "0-100",
+        "improvementAreas": ["Array of major areas needing attention"]
+      }
+    }
+
+    YOU MUST RETURN A VALID JSON OBJECT ONLY, NO OTHER TEXT OR FORMATTING.
+    </ResponseFormat>`;
 
     const response = await llm.invoke([
       { role: 'system', content: 'You are an expert email reviewer.' },
@@ -336,51 +376,102 @@ Provide a JSON response with:
     criteria: QualityCriteria,
     initialAnalysis: ReviewResult
   ): Promise<ReviewResult> {
-    this.log('DEBUG', 'Starting detailed review', {
+    console.log('DEBUG - Starting detailed review', {
       initialScore: initialAnalysis.score,
       criteriaElements: criteria.requiredElements.length,
     });
     const sharedContext = this.getSharedContext();
     const previousDrafts = sharedContext.memory.draftHistory;
 
-    const prompt = `Perform a detailed review of this email draft.
+    const improvedPrompt = `
+    <Purpose>
+    Perform a detailed review of this email draft.
+    </Purpose>
 
-Draft:
-${draft}
+    <Draft>
+    ${draft}
+    </Draft>
 
-Initial Analysis:
-${JSON.stringify(initialAnalysis.analysis)}
+    <InitialAnalysis>
+    ${JSON.stringify(initialAnalysis.analysis)}
+    </InitialAnalysis>
 
-Context:
-- Contact: ${context.contact.name} (${context.contact.title})
-- Goal: ${context.angle.title}
-- Previous Drafts: ${previousDrafts.length}
-- Previous Feedback: ${this.summarizePreviousFeedback()}
+    <Context>
+      <Contact>
+        ${context.contact.name} (${context.contact.title})
+      </Contact>
+      <Goal>${context.angle.title}</Goal>
+      <PreviousDrafts>
+        ${previousDrafts.length}
+      </PreviousDrafts>
+      <PreviousFeedback>
+        ${this.summarizePreviousFeedback()}
+      </PreviousFeedback>
+    </Context>
 
-Quality Criteria:
-${JSON.stringify(criteria, null, 2)}
+    <QualityCriteria>
+    ${JSON.stringify(criteria, null, 2)}
+    </QualityCriteria>
 
-Provide a comprehensive JSON analysis including:
-- score: Detailed quality score (0-100)
-- approved: Boolean indicating if email meets standards
-- analysis: {
-    toneScore: 0-100,
-    personalizationScore: 0-100,
-    contentRelevance: 0-100,
-    structureQuality: 0-100,
-    clarity: 0-100,
-    engagement: 0-100,
-    contextualRelevance: 0-100,
-    styleMatch: string,
-    toneMatch: string,
-    improvementAreas: Array of specific areas needing improvement
-  }
-- suggestions: Array of detailed improvement suggestions`;
+    <Instructions>
+      <Instruction>
+        Provide a comprehensive JSON analysis including:
+        <Analysis>
+          <Score>0-100</Score>
+          <Analysis>
+            <ToneScore>0-100</ToneScore>
+            <PersonalizationScore>0-100</PersonalizationScore>
+            <ContentRelevance>0-100</ContentRelevance>
+            <StructureQuality>0-100</StructureQuality>
+            <Clarity>0-100</Clarity>
+            <Engagement>0-100</Engagement>
+            <ContextualRelevance>0-100</ContextualRelevance>
+            <StyleMatch>string</StyleMatch>
+            <ToneMatch>string</ToneMatch>
+            <ImprovementAreas>Array of specific areas needing improvement</ImprovementAreas>
+          </Analysis>
+        </Analysis>
+      </Instruction>
+      <Instruction>
+        Analyze the draft against the quality criteria.
+      </Instruction>
+      <Instruction>
+        Generate specific improvement suggestions.
+      </Instruction>
+    </Instructions>
+
+    <ResponseFormat>
+    Return a valid JSON object with exactly the following keys and nothing else:
+    {
+      "score": "Detailed quality score (0-100)",
+      "approved": "Boolean indicating if email meets standards",
+      "analysis": {
+        "toneScore": "0-100",
+        "personalizationScore": "0-100",
+        "contentRelevance": "0-100",
+        "structureQuality": "0-100",
+        "clarity": "0-100",
+        "engagement": "0-100",
+        "contextualRelevance": "0-100",
+        "styleMatch": "string describing writing style match",
+        "toneMatch": "string describing tone appropriateness",
+        "improvementAreas": ["Array of specific areas needing improvement"]
+      },
+      "suggestions": ["Array of detailed improvement suggestions"]
+    }
+
+    YOU MUST RETURN A VALID JSON OBJECT ONLY, NO OTHER TEXT OR FORMATTING.
+    </ResponseFormat>`;
 
     const response = await llm.invoke([
       { role: 'system', content: 'You are an expert email reviewer.' },
-      { role: 'user', content: prompt },
+      { role: 'user', content: improvedPrompt },
     ]);
+
+    console.log(
+      'mtravis - response:',
+      util.inspect(response.content, false, null, true)
+    );
 
     return JSON.parse(response.content.toString());
   }
@@ -396,40 +487,71 @@ Provide a comprehensive JSON analysis including:
     improvedContent: string;
     improvements: { suggestion: string; impact: number; reasoning: string }[];
   }> {
-    this.log('DEBUG', 'Generating improvements', {
+    console.log('DEBUG - Generating improvements', {
       currentScore: review.score,
       improvementAreas: review.analysis?.improvementAreas,
     });
     const sharedContext = this.getSharedContext();
     const previousDrafts = sharedContext.memory.draftHistory;
 
-    const prompt = `Generate specific improvements for this email draft.
+    const improvedPrompt = `
+    <Purpose>
+    Generate specific improvements for this email draft.
+    </Purpose>
 
-Draft:
-${draft}
+    <CurrentDraft>
+    ${draft}
+    </CurrentDraft>
 
-Review Analysis:
-${JSON.stringify(review.analysis)}
+    <ReviewAnalysis>
+    ${JSON.stringify(review.analysis)}
+    </ReviewAnalysis>
 
-Context:
-- Contact: ${context.contact.name}
-- Previous Drafts: ${previousDrafts.length}
-- Previous Feedback: ${this.summarizePreviousFeedback()}
+    <Context>
+      <Contact>
+        ${context.contact.name} (${context.contact.title})
+      </Contact>
+      <PreviousDrafts>
+        ${previousDrafts.length}
+      </PreviousDrafts>
+      <PreviousFeedback>
+        ${this.summarizePreviousFeedback()}
+      </PreviousFeedback>
+    </Context>
 
-For each improvement area, provide:
-- Specific suggestion
-- Expected impact (0-100)
-- Detailed reasoning
+    <Instructions>
+      <Instruction>For each improvement area, provide:
+        <ImprovementArea>
+          <Suggestion>Specific suggestion</Suggestion>
+          <ExpectedImpact>Expected impact (0-100)</ExpectedImpact>
+          <Reasoning>Detailed reasoning</Reasoning>
+        </ImprovementArea>
+      </Instruction>
+      <Instruction>Also generate an improved version of the entire email.</Instruction>
+    </Instructions>
 
-Also generate an improved version of the entire email.
+    <ResponseFormat>
+    Return a valid JSON object with exactly the following keys and nothing else:
+    {
+      "improvedContent": "The complete improved email text",
+      "improvements": [
+        {
+          "suggestion": "Specific improvement suggestion",
+          "impact": "Impact score (0-100)",
+          "reasoning": "Detailed explanation of the improvement"
+        }
+      ]
+    }
+    
+    YOU MUST RETURN A VALID JSON OBJECT ONLY, NO OTHER TEXT OR FORMATTING.
+    </ResponseFormat>
+    `;
 
-Return as JSON with:
-- improvedContent: string
-- improvements: Array of {suggestion, impact, reasoning}`;
+    console.log('mtravis - improvedPrompt:', improvedPrompt);
 
     const response = await llm.invoke([
       { role: 'system', content: 'You are an expert email improver.' },
-      { role: 'user', content: prompt },
+      { role: 'user', content: improvedPrompt },
     ]);
 
     return JSON.parse(response.content.toString());
@@ -442,7 +564,7 @@ Return as JSON with:
     review: ReviewResult,
     context: EmailContext
   ): Promise<ReviewResult> {
-    this.log('DEBUG', 'Validating review results', {
+    console.log('DEBUG - Validating review results', {
       score: review.score,
       hasImprovements: !!review.improvedContent,
     });
@@ -456,7 +578,7 @@ Return as JSON with:
       );
 
       if (successfulDrafts.length > 0) {
-        this.log('DEBUG', 'Applying historical pattern boost', {
+        console.log('DEBUG - Applying historical pattern boost', {
           successfulDraftsCount: successfulDrafts.length,
         });
         // Boost scores for matching successful patterns

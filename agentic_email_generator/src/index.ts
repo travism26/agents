@@ -20,6 +20,7 @@ import {
   GeneratedEmail,
   Angle,
 } from './models/models';
+import util from 'util';
 
 export interface EmailGenerationResult {
   record: GeneratedEmailRecord;
@@ -117,19 +118,8 @@ export async function generateEmails(
     let reviewResult;
 
     do {
-      // Update subphase for each revision
-      console.log('Updating subphase for revision');
-      if (revisionCount > 0) {
-        contextManager.updatePhase(
-          'revision',
-          `revision_${revisionCount}`,
-          0.6 + revisionCount * 0.1
-        );
-      }
-
-      // Ensure we're in review phase before proceeding
-      contextManager.updatePhase('review', 'initial_review', 0.6);
-      await new Promise((resolve) => setTimeout(resolve, 100)); // Give time for phase update
+      // Give time for any pending operations
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       console.log('Reviewing draft');
 
@@ -142,12 +132,26 @@ export async function generateEmails(
       }
       console.log('mtravis - 1:');
 
+      console.log(
+        'mtravis - current draft:',
+        util.inspect(currentDraft, {
+          depth: null,
+          colors: true,
+        })
+      );
+      console.log('mtravis - params:', {
+        contact,
+        articles: newsArticles,
+        angle: researchFindings.angle,
+        revisionCount,
+      });
       reviewResult = await reviewer.review(currentDraft, {
         contact,
         articles: newsArticles,
         angle: researchFindings.angle,
         revisionCount,
       });
+      console.log('mtravis - 2:');
 
       console.log('Review completed');
       console.log('Review result:', reviewResult);
@@ -156,7 +160,7 @@ export async function generateEmails(
         finalDraft = currentDraft;
         break;
       }
-      console.log('mtravis - 2:');
+      console.log('mtravis - 2.1:');
 
       if (revisionCount >= 3) {
         console.log('Failed to meet quality standards');

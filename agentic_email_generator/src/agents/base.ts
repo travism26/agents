@@ -163,7 +163,21 @@ export abstract class BaseAgent {
     }
 
     // Give time for phase update to be processed
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Verify phase update
+    const currentPhase = this.getSharedContext().state.phase;
+    if (
+      (targetAgent === 'writer' && currentPhase !== 'writing') ||
+      (targetAgent === 'reviewer' && currentPhase !== 'review')
+    ) {
+      this.log('ERROR', 'Phase transition failed', {
+        targetAgent,
+        expectedPhase: targetAgent === 'writer' ? 'writing' : 'review',
+        actualPhase: currentPhase,
+      });
+      throw new Error(`Failed to transition to ${targetAgent} phase`);
+    }
 
     this.log('INFO', `Handing off to ${targetAgent}`, {
       reason,
@@ -324,6 +338,39 @@ export abstract class BaseAgent {
           ? Object.keys(lastHandoff.data.angle)
           : [],
       });
+    } else if (this.agentType === 'reviewer') {
+      // Validate reviewer's expected data structure
+      if (
+        !lastHandoff.data.draft ||
+        typeof lastHandoff.data.draft !== 'string' ||
+        !lastHandoff.data.emailContext ||
+        typeof lastHandoff.data.emailContext !== 'object' ||
+        !lastHandoff.data.emailContext.contact ||
+        !lastHandoff.data.emailContext.articles ||
+        !Array.isArray(lastHandoff.data.emailContext.articles) ||
+        !lastHandoff.data.emailContext.angle ||
+        typeof lastHandoff.data.emailContext.revisionCount !== 'number'
+      ) {
+        this.log(
+          'ERROR',
+          'Missing or invalid data structure in handoff to reviewer',
+          {
+            data: lastHandoff.data,
+          }
+        );
+        return false;
+      }
+
+      // Log validation details
+      this.log('DEBUG', 'Reviewer handoff data validation details', {
+        hasDraft: !!lastHandoff.data.draft,
+        draftLength: lastHandoff.data.draft.length,
+        hasEmailContext: !!lastHandoff.data.emailContext,
+        hasContact: !!lastHandoff.data.emailContext?.contact,
+        articleCount: lastHandoff.data.emailContext?.articles?.length,
+        hasAngle: !!lastHandoff.data.emailContext?.angle,
+        revisionCount: lastHandoff.data.emailContext?.revisionCount,
+      });
     }
 
     this.log('INFO', 'Handoff validation successful', {
@@ -365,6 +412,16 @@ export abstract class BaseAgent {
     // Check if we're in the correct phase
     if (!validPhases.includes(context.state.phase)) {
       this.log('DEBUG', 'Cannot proceed due to invalid phase', {
+        currentPhase: context.state.phase,
+        validPhases,
+        agentType: this.agentType,
+      });
+      return false;
+    }
+
+    // For reviewer, ensure we're in review phase before proceeding
+    if (this.agentType === 'reviewer' && context.state.phase !== 'review') {
+      this.log('DEBUG', 'Reviewer must be in review phase', {
         currentPhase: context.state.phase,
         validPhases,
       });
