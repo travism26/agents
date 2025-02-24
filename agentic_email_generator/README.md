@@ -2,6 +2,96 @@
 
 A TypeScript module that generates personalized outreach emails using AI agents for research, writing, and review.
 
+## System Architecture
+
+```mermaid
+graph TB
+    subgraph Agents
+        R[Researcher Agent]
+        W[Writer Agent]
+        Rev[Reviewer Agent]
+    end
+
+    subgraph Context Management
+        CM[Context Manager]
+        SC[Shared Context]
+        L[Logging System]
+    end
+
+    subgraph External Services
+        News[News API]
+        AI[OpenAI API]
+    end
+
+    subgraph Models
+        U[User]
+        C[Contact]
+        Co[Company]
+        EM[Email Models]
+    end
+
+    R --> CM
+    W --> CM
+    Rev --> CM
+    CM <--> SC
+    CM --> L
+    R --> News
+    R --> AI
+    W --> AI
+    Rev --> AI
+    U --> CM
+    C --> CM
+    Co --> CM
+    EM --> CM
+```
+
+## Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Main
+    participant Researcher
+    participant Writer
+    participant Reviewer
+    participant Context
+
+    Client->>Main: generateEmails(user, contact, company, options)
+    Main->>Context: Initialize Context
+
+    rect rgb(200, 220, 255)
+        Note over Main,Context: Research Phase
+        Main->>Researcher: research(contact, company)
+        Researcher->>Context: Update Phase
+        Researcher-->>Context: Record Research Findings
+        Researcher-->>Writer: Handoff (articles, angle)
+    end
+
+    rect rgb(220, 255, 220)
+        Note over Main,Context: Writing Phase
+        Main->>Writer: compose(user, contact, options, articles)
+        Writer->>Context: Update Phase
+        Writer-->>Context: Record Draft
+        Writer-->>Reviewer: Handoff (draft, context)
+    end
+
+    rect rgb(255, 220, 220)
+        Note over Main,Context: Review Phase
+        loop Maximum 3 revisions
+            Main->>Reviewer: review(draft, context)
+            Reviewer->>Context: Update Phase
+            alt Draft Approved
+                Reviewer-->>Main: Approval
+            else Needs Revision
+                Reviewer-->>Writer: Revision Request
+                Main->>Writer: compose(revised options)
+            end
+        end
+    end
+
+    Main-->>Client: Return Generated Email
+```
+
 ## Installation
 
 ```bash
