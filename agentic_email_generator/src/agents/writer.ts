@@ -116,22 +116,41 @@ export class WriterAgent extends BaseAgent {
       contactTitle: contact.title,
       hasPreviousContent: !!previousContent,
     });
-    const prompt = `Generate a simple, straightforward email draft.
 
-Previous Content (for reference):
-${previousContent || 'No previous content'}
+    const improvedPrompt = `
+    <Purpose>
+    Generate a simple, straightforward email draft.
+    </Purpose>
 
-Contact:
-- Name: ${contact.name}
-- Title: ${contact.title}
-- Company: ${contact.company}
+    <PreviousContent>
+    ${previousContent || 'No previous content'}
+    </PreviousContent>
 
-Keep it brief and focused on scheduling a discussion.
-Use a professional tone and standard business email format.`;
+    <Contact>
+      <Name>${contact.name}</Name>
+      <Title>${contact.title}</Title>
+      <Company>${contact.company}</Company>
+    </Contact>
+
+    <Requirements>
+      <Style>
+        <Format>Personalized business email format</Format>
+        <Tone>casual</Tone>
+      </Style>
+      <Content>
+        <Focus>Schedule a discussion</Focus>
+        <Length>Brief and concise</Length>
+      </Content>
+    </Requirements>
+
+    <ResponseFormat>
+    Generate only the email content, no additional formatting or explanation.
+    The email should be ready to send as-is.
+    </ResponseFormat>`;
 
     const response = await llm.invoke([
       { role: 'system', content: 'You are an expert email writer.' },
-      { role: 'user', content: prompt },
+      { role: 'user', content: improvedPrompt },
     ]);
 
     const content = response.content.toString();
@@ -173,34 +192,48 @@ Use a professional tone and standard business email format.`;
       articleCount: articles.length,
       goal,
     });
-    const prompt = `As an expert email writer, analyze these news articles and create a compelling narrative that supports the email goal.
 
-Goal: ${goal}
+    const improvedPrompt = `
+    <Purpose>
+    Analyze news articles and create a compelling narrative that supports the email goal.
+    </Purpose>
 
-Articles:
-${articles
-  .map(
-    (article) => `
-Title: ${article.title}
-Summary: ${article.summary}
-Category: ${article.tags[0]}
-`
-  )
-  .join('\n')}
+    <Goal>${goal}</Goal>
 
-Consider:
-1. Relevance to the goal
-2. Recency and impact
-3. Narrative flow
-4. Supporting evidence
+    <Articles>
+    ${articles
+      .map(
+        (article) => `
+      <Article>
+        <Title>${article.title}</Title>
+        <Summary>${article.summary}</Summary>
+        <Category>${article.tags[0]}</Category>
+      </Article>
+    `
+      )
+      .join('')}
+    </Articles>
 
-Provide a JSON response with:
-- narrative: A brief strategy for incorporating these articles
-- selectedArticles: Array of article titles to reference`;
+    <AnalysisGuidelines>
+      <Criterion>Relevance to the goal</Criterion>
+      <Criterion>Recency and impact</Criterion>
+      <Criterion>Narrative flow</Criterion>
+      <Criterion>Supporting evidence</Criterion>
+    </AnalysisGuidelines>
+
+    <ResponseFormat>
+    Return a valid JSON object with:
+    {
+      "narrative": "A brief strategy for incorporating these articles",
+      "selectedArticles": ["Array of article titles to reference"]
+    }
+
+    YOU MUST RETURN A VALID JSON OBJECT ONLY, NO OTHER TEXT OR FORMATTING.
+    </ResponseFormat>`;
 
     const response = await llm.invoke([
       { role: 'system', content: 'You are an expert email strategist.' },
-      { role: 'user', content: prompt },
+      { role: 'user', content: improvedPrompt },
     ]);
 
     const result = JSON.parse(response.content.toString());
@@ -233,30 +266,46 @@ Provide a JSON response with:
       style,
       goal,
     });
-    const prompt = `Create highly personalized email content for this contact.
 
-Contact Information:
-- Name: ${contact.name}
-- Title: ${contact.title}
-- Company: ${contact.company}
+    const improvedPrompt = `
+    <Purpose>
+    Create highly personalized email content for this contact.
+    </Purpose>
 
-Goal: ${goal}
-Style: ${style}
-Narrative Strategy: ${narrative}
+    <Contact>
+      <Name>${contact.name}</Name>
+      <Title>${contact.title}</Title>
+      <Company>${contact.company}</Company>
+    </Contact>
 
-Previous Interactions: ${this.summarizePreviousInteractions()}
+    <Parameters>
+      <Goal>${goal}</Goal>
+      <Style>${style}</Style>
+      <NarrativeStrategy>${narrative}</NarrativeStrategy>
+    </Parameters>
 
-Consider:
-1. Professional context
-2. Industry relevance
-3. Potential value proposition
-4. Natural conversation flow
+    <History>
+      <PreviousInteractions>
+        ${this.summarizePreviousInteractions()}
+      </PreviousInteractions>
+    </History>
 
-Generate email content that feels personal and purposeful.`;
+    <ConsiderationFactors>
+      <Factor>Professional context</Factor>
+      <Factor>Industry relevance</Factor>
+      <Factor>Potential value proposition</Factor>
+      <Factor>Natural conversation flow</Factor>
+    </ConsiderationFactors>
+
+    <ResponseFormat>
+    Generate email content that feels personal and purposeful.
+    Return only the email content, with no additional formatting or explanation.
+    The content should be ready to send as-is.
+    </ResponseFormat>`;
 
     const response = await llm.invoke([
       { role: 'system', content: 'You are an expert email writer.' },
-      { role: 'user', content: prompt },
+      { role: 'user', content: improvedPrompt },
     ]);
 
     return response.content.toString();
@@ -670,23 +719,34 @@ Common patterns: ${patterns.join(', ')}`;
       goal,
       tone,
     });
-    const prompt = `Create an engaging email subject line.
 
-Goal: ${goal}
-Narrative: ${narrative}
-Tone: ${tone}
+    const improvedPrompt = `
+    <Purpose>
+    Create an engaging email subject line.
+    </Purpose>
 
-Requirements:
-1. Clear and concise
-2. Engaging but professional
-3. Aligned with email goal
-4. No clickbait
+    <Parameters>
+      <Goal>${goal}</Goal>
+      <Narrative>${narrative}</Narrative>
+      <Tone>${tone}</Tone>
+    </Parameters>
 
-Return only the subject line text.`;
+    <Requirements>
+      <Criterion>Clear and concise</Criterion>
+      <Criterion>Engaging but professional</Criterion>
+      <Criterion>Aligned with email goal</Criterion>
+      <Criterion>No clickbait</Criterion>
+    </Requirements>
+
+    <ResponseFormat>
+    Return only the subject line text.
+    No additional formatting or explanation.
+    The subject line should be ready to use as-is.
+    </ResponseFormat>`;
 
     const response = await llm.invoke([
       { role: 'system', content: 'You are an expert email writer.' },
-      { role: 'user', content: prompt },
+      { role: 'user', content: improvedPrompt },
     ]);
 
     return response.content.toString().trim();

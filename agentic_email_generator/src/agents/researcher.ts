@@ -382,22 +382,49 @@ export class ResearcherAgent extends BaseAgent {
       articleId: article.id,
     });
     const context = this.getSharedContext();
-    const prompt = `Categorize this article into ONE of these categories. Return ONLY the category name, no explanations:
-- partnerships_investments
-- developments_innovations
-- leadership_strategy
-- achievements_milestones
-- other
 
-Article:
-Title: ${article.title}
-Summary: ${article.summary}
-Company: ${context.company.name}
-Industry: ${context.company.details.industry}`;
+    const improvedPrompt = `
+    <Purpose>
+    Categorize this article into a single predefined category.
+    </Purpose>
+
+    <Article>
+      <Title>${article.title}</Title>
+      <Summary>${article.summary}</Summary>
+      <Company>${context.company.name}</Company>
+      <Industry>${context.company.details.industry}</Industry>
+    </Article>
+
+    <Categories>
+      <Category>partnerships_investments</Category>
+      <Category>developments_innovations</Category>
+      <Category>leadership_strategy</Category>
+      <Category>achievements_milestones</Category>
+      <Category>other</Category>
+    </Categories>
+
+    <ResponseFormat>
+    Return ONLY the category name from the list above.
+    No explanations or additional text.
+    Response must be lowercase and match exactly one of the category names.
+
+    Example valid responses:
+    "partnerships_investments"
+    "developments_innovations"
+    "leadership_strategy"
+    "achievements_milestones"
+    "other"
+
+    Invalid response examples:
+    "PARTNERSHIPS_INVESTMENTS" (wrong case)
+    "partnerships" (incomplete)
+    "This article is about partnerships_investments" (extra text)
+    "partnerships_investments, developments_innovations" (multiple categories)
+    </ResponseFormat>`;
 
     const response = await llm.invoke([
       { role: 'system', content: 'You are an expert news analyst.' },
-      { role: 'user', content: prompt },
+      { role: 'user', content: improvedPrompt },
     ]);
 
     // Extract category from response
