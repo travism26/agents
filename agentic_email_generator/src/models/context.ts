@@ -502,4 +502,18 @@ export class ContextManager {
       (s) => s.status === 'pending'
     );
   }
+
+  /**
+   * Clears all handoffs from the context
+   */
+  clearHandoffs(): void {
+    this.context.collaboration.handoffs = [];
+    console.log({
+      timestamp: new Date(),
+      level: 'INFO',
+      agent: 'system',
+      message: 'Cleared handoff chain for new revision cycle',
+      metadata: {},
+    });
+  }
 }

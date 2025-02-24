@@ -118,85 +118,94 @@ export async function generateEmails(
     let reviewResult;
 
     do {
-      // Give time for any pending operations
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      console.log('Reviewing draft');
-
-      // Get angle from research findings
+      // Get research findings at start of loop
       const researchFindings =
         contextManager.getContext().memory.researchFindings;
-      console.log('Research findings:', researchFindings);
-      if (!researchFindings || !researchFindings.angle) {
-        throw new Error('Research findings or angle not found in context');
+      if (!researchFindings) {
+        throw new Error('Research findings not found in context');
       }
-      console.log('mtravis - 1:');
 
-      console.log(
-        'mtravis - current draft:',
-        util.inspect(currentDraft, {
-          depth: null,
-          colors: true,
-        })
-      );
-      console.log('mtravis - params:', {
-        contact,
-        articles: newsArticles,
-        angle: researchFindings.angle,
-        revisionCount,
-      });
+      // Reset context for new revision cycle
+      if (revisionCount > 0) {
+        console.log('Resetting context for revision cycle', revisionCount);
+
+        // Clear existing handoffs and reset phase
+        contextManager.clearHandoffs();
+        await contextManager.updatePhase('research', 'initializing', 0);
+
+        // Re-establish researcher to writer handoff with original research
+        await researcher.handoffToAgent(
+          'writer',
+          'Research completed successfully',
+          {
+            articles: researchFindings.articles,
+            angle: researchFindings.angle,
+          }
+        );
+
+        // Transition to writing phase
+        contextManager.updatePhase('writing', 'revision', 0.3);
+
+        // Verify context is ready for next revision
+        const updatedContext = contextManager.getContext();
+        console.log('Context reset complete', {
+          phase: updatedContext.state.phase,
+          handoffCount: updatedContext.collaboration.handoffs.length,
+        });
+
+        // Small delay to ensure state propagation
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      if (revisionCount === 0) {
+        console.log('Reviewing initial draft');
+      } else {
+        console.log(`Reviewing revision ${revisionCount}`);
+      }
+
+      // Perform review
       reviewResult = await reviewer.review(currentDraft, {
         contact,
         articles: newsArticles,
         angle: researchFindings.angle,
         revisionCount,
       });
-      console.log('mtravis - 2:');
 
-      console.log('Review completed');
-      console.log('Review result:', reviewResult);
       if (reviewResult.approved) {
         console.log('Draft approved');
         finalDraft = currentDraft;
         break;
       }
-      console.log('mtravis - 2.1:');
 
       if (revisionCount >= 3) {
-        console.log('Failed to meet quality standards');
-        contextManager.updatePhase('failed');
-        return {
-          record: {
-            _id: generationId,
-            userId: user._id,
-            contact,
-            createdAt: startTime,
-            status: 'failed',
-            failedReason: `Failed to meet quality standards after ${revisionCount} revisions: ${reviewResult.suggestions.join(
-              ', '
-            )}`,
-            generatedEmails: [],
-          },
-        };
+        console.log('Maximum revision attempts reached');
+        break;
       }
-      console.log('mtravis - 3:');
+
       // Generate new draft incorporating review suggestions
       console.log('Generating revised draft');
-      const revisedDraft = await writer.compose(
-        user,
-        contact,
-        {
-          ...emailOptions,
-          goal: `${emailOptions.goal} (Revision ${revisionCount + 1}: ${
-            reviewResult.suggestions[0]
-          })`,
-        },
-        newsArticles
-      );
-      console.log('Revised draft generated');
-      console.log('Revised draft:', revisedDraft.content);
-      currentDraft = revisedDraft.content;
-      revisionCount++;
+      try {
+        const revisedDraft = await writer.compose(
+          user,
+          contact,
+          {
+            ...emailOptions,
+            goal: `${emailOptions.goal} (Revision ${revisionCount + 1}: ${
+              reviewResult.suggestions[0]
+            })`,
+          },
+          newsArticles
+        );
+        currentDraft = revisedDraft.content;
+        revisionCount++;
+      } catch (error) {
+        console.error('Failed to generate revision:', error);
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error';
+        throw new Error(
+          `Revision ${revisionCount + 1} failed: ${errorMessage}`
+        );
+      }
     } while (revisionCount < 3);
 
     console.log('mtravis - 4:');
@@ -226,8 +235,8 @@ export async function generateEmails(
     // Get angle from research findings for the final record
     const researchFindings =
       contextManager.getContext().memory.researchFindings;
-    if (!researchFindings || !researchFindings.angle) {
-      throw new Error('Research findings or angle not found in context');
+    if (!researchFindings) {
+      throw new Error('Research findings not found in context');
     }
 
     const generatedEmail: GeneratedEmail = {

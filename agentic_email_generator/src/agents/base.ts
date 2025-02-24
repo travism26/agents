@@ -142,23 +142,23 @@ export abstract class BaseAgent {
   /**
    * Initiates a handoff to another agent
    */
-  protected async handoffToAgent(
-    targetAgent: string,
+  public async handoffToAgent(
+    toAgent: 'researcher' | 'writer' | 'reviewer',
     reason: string,
     data: Record<string, any>
   ): Promise<void> {
-    this.log('DEBUG', `Attempting handoff to ${targetAgent}`, {
+    this.log('DEBUG', `Attempting handoff to ${toAgent}`, {
       fromAgent: this.agentType,
-      toAgent: targetAgent,
+      toAgent,
       reason,
       data,
       currentPhase: this.getSharedContext().state.phase,
     });
 
     // Update phase before handoff
-    if (targetAgent === 'writer') {
+    if (toAgent === 'writer') {
       this.updatePhase('writing', 'initial_draft', 0.3);
-    } else if (targetAgent === 'reviewer') {
+    } else if (toAgent === 'reviewer') {
       this.updatePhase('review', 'initial_review', 0.6);
     }
 
@@ -168,30 +168,25 @@ export abstract class BaseAgent {
     // Verify phase update
     const currentPhase = this.getSharedContext().state.phase;
     if (
-      (targetAgent === 'writer' && currentPhase !== 'writing') ||
-      (targetAgent === 'reviewer' && currentPhase !== 'review')
+      (toAgent === 'writer' && currentPhase !== 'writing') ||
+      (toAgent === 'reviewer' && currentPhase !== 'review')
     ) {
       this.log('ERROR', 'Phase transition failed', {
-        targetAgent,
-        expectedPhase: targetAgent === 'writer' ? 'writing' : 'review',
+        toAgent,
+        expectedPhase: toAgent === 'writer' ? 'writing' : 'review',
         actualPhase: currentPhase,
       });
-      throw new Error(`Failed to transition to ${targetAgent} phase`);
+      throw new Error(`Failed to transition to ${toAgent} phase`);
     }
 
-    this.log('INFO', `Handing off to ${targetAgent}`, {
+    this.log('INFO', `Handing off to ${toAgent}`, {
       reason,
       data,
       phase: this.getSharedContext().state.phase,
     });
 
     // Record the handoff
-    this.contextManager.recordHandoff(
-      this.agentType,
-      targetAgent,
-      reason,
-      data
-    );
+    this.contextManager.recordHandoff(this.agentType, toAgent, reason, data);
 
     // Verify handoff was recorded
     const context = this.getSharedContext();
@@ -201,21 +196,21 @@ export abstract class BaseAgent {
     if (
       !lastHandoff ||
       lastHandoff.from !== this.agentType ||
-      lastHandoff.to !== targetAgent
+      lastHandoff.to !== toAgent
     ) {
       this.log('ERROR', 'Handoff verification failed', {
         lastHandoff,
         expectedFrom: this.agentType,
-        expectedTo: targetAgent,
+        expectedTo: toAgent,
       });
       throw new Error(
-        `Failed to record handoff from ${this.agentType} to ${targetAgent}`
+        `Failed to record handoff from ${this.agentType} to ${toAgent}`
       );
     }
 
     this.log('DEBUG', 'Handoff completed successfully', {
       from: this.agentType,
-      to: targetAgent,
+      to: toAgent,
       handoffCount: context.collaboration.handoffs.length,
     });
   }

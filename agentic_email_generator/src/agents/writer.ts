@@ -462,7 +462,7 @@ Common patterns: ${patterns.join(', ')}`;
       util.inspect(researchFindings, { depth: 5, colors: true })
     );
 
-    this.log('DEBUG', 'Updated context state', {
+    console.log('DEBUG', 'Updated context state', {
       phase: updatedContext.state.phase,
       handoffs: updatedContext.collaboration.handoffs,
       suggestions: updatedContext.collaboration.suggestions,
@@ -470,14 +470,32 @@ Common patterns: ${patterns.join(', ')}`;
     });
 
     // Validate handoff from researcher
-    if (!this.validateHandoff('researcher', { articles: [], angle: {} })) {
+    if (
+      !this.validateHandoff('researcher', {
+        articles: researchFindings?.articles || [],
+        angle: researchFindings?.angle || {},
+      })
+    ) {
       const lastHandoff =
         this.getSharedContext().collaboration.handoffs.slice(-1)[0];
       this.log('ERROR', 'Handoff validation failed', {
         lastHandoff,
         handoffData: lastHandoff?.data,
+        expectedData: {
+          articles: researchFindings?.articles || [],
+          angle: researchFindings?.angle || {},
+        },
       });
-      throw new Error('Invalid or missing handoff from researcher agent');
+
+      // Instead of throwing immediately, try to recover using the research findings
+      if (researchFindings?.articles?.length && researchFindings.angle) {
+        this.log(
+          'INFO',
+          'Proceeding with available research findings despite handoff validation failure'
+        );
+      } else {
+        throw new Error('Invalid or missing handoff from researcher agent');
+      }
     }
 
     // Verify research findings
