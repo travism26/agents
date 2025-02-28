@@ -1,14 +1,15 @@
 # Memlog System Index
 
-Last Updated: YYYY-MM-DD
+Last Updated: 2025-02-28
 
 ## Active Projects
 
-| Project                                    | Current Sprint | Priority Tasks        | Status      |
-| ------------------------------------------ | -------------- | --------------------- | ----------- |
-| [Project One](./active/project-one.md)     | Sprint 3       | Implement feature X   | In Progress |
-| [Project Two](./active/project-two.md)     | Sprint 2       | Fix critical bug Y    | Blocked     |
-| [Project Three](./active/project-three.md) | Sprint 1       | Set up CI/CD pipeline | Pending     |
+| Project                                                         | Current Sprint | Priority Tasks                     | Status      |
+| --------------------------------------------------------------- | -------------- | ---------------------------------- | ----------- |
+| [Cover Letter Generation Agent](./active/cover-letter-agent.md) | Sprint 1       | Project setup and input processing | In Progress |
+| [Project One](./active/project-one.md)                          | Sprint 3       | Implement feature X                | In Progress |
+| [Project Two](./active/project-two.md)                          | Sprint 2       | Fix critical bug Y                 | Blocked     |
+| [Project Three](./active/project-three.md)                      | Sprint 1       | Set up CI/CD pipeline              | Pending     |
 
 ## Recently Completed Tasks
 

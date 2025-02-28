@@ -6,6 +6,9 @@ All notable changes to the project will be documented in this file.
 
 ### Added
 
+- Cover Letter Generation Agent project initialization
+- Memlog system setup for Cover Letter Generation Agent
+- Project structure and documentation review
 - Feature X implementation in progress
 - New authentication module design
 

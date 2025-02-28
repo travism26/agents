@@ -35,10 +35,10 @@ const company: Company = {
 
 // Email generation options
 const emailOptions: EmailOptions = {
-  goal: 'Secure a meeting to discuss AI-driven social media analytics solutions',
+  goal: 'Retain a relationship with Elon Musk and Tesla',
   style: 'casual',
   tone: 'friendly',
-  includeSalutation: true,
+  includeSalutation: false,
   includeSignature: true,
 };
 
@@ -67,6 +67,9 @@ async function runDemo() {
       console.log('- Created At:', result.record.createdAt);
       console.log('- News Articles Used:', email.newsArticles.length);
       console.log('- Angle:', email.angle.title);
+
+      const util = require('util');
+      console.log(util.inspect(result, false, null, true /* enable colors */));
     } else {
       console.log('\n❌ Email Generation Failed');
       console.log('Reason:', result.record.failedReason);
