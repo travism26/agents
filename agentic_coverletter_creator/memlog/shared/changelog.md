@@ -6,6 +6,31 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 
 ### Added
 
+- Research Agent Development (in progress)
+
+## [0.2.0] - 2025-03-01
+
+### Added
+
+- Express server with health check endpoint and error handling
+- Request logging middleware
+- Graceful server startup and shutdown procedures
+- Resume parsing for PDF, DOCX, and JSON formats
+- Input sanitization utilities
+- Validation for job descriptions and company names
+- API endpoint for cover letter generation
+- Multipart form handling for file uploads
+- Unit tests for input processing components
+- Integration tests for the API
+
+## [0.1.0] - 2025-03-01
+
+### Added
+
+- Detailed implementation blueprint with granular task breakdown
+- Implementation timeline organized by sprint with clear deliverables
+- Priority levels for each task group
+- Testing requirements for each component
 - Cover Letter Generation Agent project initialization
 - Memlog system setup for Cover Letter Generation Agent
 - Project structure and documentation review
