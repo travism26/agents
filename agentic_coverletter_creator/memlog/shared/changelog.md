@@ -6,8 +6,23 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 
 ### Added
 
-- Writer Agent Development (planned)
-- LLM Integration with OpenAI GPT client (planned)
+- Writer Agent Controller (planned)
+- Cover Letter Generation API Endpoint (planned)
+
+## [0.6.0] - 2025-03-02
+
+### Added
+
+- LLMClient interface with standardized methods for text generation
+- OpenAI GPT client with comprehensive error handling and retry logic
+- LLMClientFactory for managing different LLM providers
+- Token usage tracking for monitoring and cost management
+- Prompt template system for flexible cover letter generation
+- WriterAgent class with cover letter generation capabilities
+- Support for different tone preferences (Professional, Enthusiastic, Confident, Creative, Balanced)
+- Comprehensive error handling for edge cases
+- Mock responses for testing LLM integrations
+- Extensive unit tests for all components
 
 ## [0.5.0] - 2025-03-02
 

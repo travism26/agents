@@ -165,7 +165,17 @@ export class ResearchAgent {
   }> {
     logger.debug(`Getting company information for: ${companyName}`);
 
-    const query = `${companyName} company information profile about`;
+    const query = `
+<SearchQuery>
+  <Purpose>Find general information about the company</Purpose>
+  <Company>${companyName}</Company>
+  <Keywords>
+    <Item>company</Item>
+    <Item>information</Item>
+    <Item>profile</Item>
+    <Item>about</Item>
+  </Keywords>
+</SearchQuery>`;
     const searchResults = await apiClient.search(query, { count: 5 });
 
     // Extract company information from search results
@@ -193,7 +203,17 @@ export class ResearchAgent {
   ): Promise<{ values: string[]; sources: SearchResult[] }> {
     logger.debug(`Extracting company values for: ${companyName}`);
 
-    const query = `${companyName} company values mission vision culture`;
+    const query = `
+<SearchQuery>
+  <Purpose>Extract company values and culture information</Purpose>
+  <Company>${companyName}</Company>
+  <Keywords>
+    <Item>company values</Item>
+    <Item>mission</Item>
+    <Item>vision</Item>
+    <Item>culture</Item>
+  </Keywords>
+</SearchQuery>`;
     const searchResults = await apiClient.search(query, { count: 3 });
 
     // Extract company values from search results
@@ -239,7 +259,17 @@ export class ResearchAgent {
   ): Promise<SearchResult[]> {
     logger.debug(`Getting recent news for: ${companyName}`);
 
-    const query = `${companyName} company news recent`;
+    const query = `
+<SearchQuery>
+  <Purpose>Find recent news about the company</Purpose>
+  <Company>${companyName}</Company>
+  <Keywords>
+    <Item>company</Item>
+    <Item>news</Item>
+    <Item>recent</Item>
+  </Keywords>
+  <TimeRange>Recent articles</TimeRange>
+</SearchQuery>`;
     return await apiClient.search(query, { count: 3 });
   }
 
@@ -255,7 +285,16 @@ export class ResearchAgent {
   ): Promise<SearchResult[]> {
     logger.debug(`Getting blog posts for: ${companyName}`);
 
-    const query = `${companyName} company blog posts`;
+    const query = `
+<SearchQuery>
+  <Purpose>Find blog posts from the company</Purpose>
+  <Company>${companyName}</Company>
+  <Keywords>
+    <Item>company</Item>
+    <Item>blog</Item>
+    <Item>posts</Item>
+  </Keywords>
+</SearchQuery>`;
     return await apiClient.search(query, { count: 3 });
   }
 
@@ -311,7 +350,17 @@ export class ResearchAgent {
     ]);
 
     // For company fit, we'll use a more targeted search
-    const query = `${companyName} company culture employee fit`;
+    const query = `
+<SearchQuery>
+  <Purpose>Understand company culture and employee fit</Purpose>
+  <Company>${companyName}</Company>
+  <Keywords>
+    <Item>company culture</Item>
+    <Item>employee</Item>
+    <Item>fit</Item>
+    <Item>work environment</Item>
+  </Keywords>
+</SearchQuery>`;
     const searchResults = await apiClient.search(query, { count: 1 });
     const companyFit = searchResults.length > 0 ? searchResults[0].snippet : '';
 

@@ -12,6 +12,7 @@ Last Updated: 2025-03-02 13:17:00 (America/Moncton, UTC-4:00)
 
 | Project                       | Task                                         | Completion Date | Archive Link |
 | ----------------------------- | -------------------------------------------- | --------------- | ------------ |
+| Cover Letter Generation Agent | LLM Integration for Writer Agent             | 2025-03-02      | N/A          |
 | Cover Letter Generation Agent | Research Agent API Implementation            | 2025-03-02      | N/A          |
 | Cover Letter Generation Agent | Company Research Implementation              | 2025-03-02      | N/A          |
 | Cover Letter Generation Agent | External API Integration                     | 2025-03-02      | N/A          |
