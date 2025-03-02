@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import multer from 'multer';
 import logger from './utils/logger';
 import { CoverLetterController } from './controllers/coverLetterController';
+import { ResearchController } from './controllers/researchController';
 
 // Load environment variables
 dotenv.config();
@@ -25,6 +26,7 @@ const upload = multer({
 
 // Initialize controllers
 const coverLetterController = new CoverLetterController();
+const researchController = new ResearchController();
 
 // Request logging middleware
 app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -41,6 +43,15 @@ app.post(
   upload.single('resume'),
   (req: Request, res: Response) =>
     coverLetterController.generateCoverLetter(req, res)
+);
+
+// Research routes
+app.post('/api/research/company', (req: Request, res: Response) =>
+  researchController.researchCompany(req, res)
+);
+
+app.post('/api/research/clear-cache', (req: Request, res: Response) =>
+  researchController.clearCache(req, res)
 );
 
 // Health check endpoint

@@ -6,8 +6,33 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 
 ### Added
 
-- Company Research Implementation (in progress)
-- Research Agent API (planned)
+- Writer Agent Development (planned)
+- LLM Integration with OpenAI GPT client (planned)
+
+## [0.5.0] - 2025-03-02
+
+### Added
+
+- ResearchController with company research endpoint
+- Cache clearing endpoint for research results
+- Request validation using Zod schema
+- Input sanitization for research parameters
+- Comprehensive error handling for research requests
+- Unit tests for the ResearchController
+- Express routes for research endpoints
+- API documentation with JSDoc comments
+
+## [0.4.0] - 2025-03-02
+
+### Added
+
+- ResearchAgent class with comprehensive company research capabilities
+- Company information search and values extraction functionality
+- Job description analysis to identify key skills and qualifications
+- Recent news and blog post retrieval for company updates
+- Structured data output format for consistent research results
+- Caching system for frequent searches with configurable TTL
+- Comprehensive unit tests for all research functionality
 
 ## [0.3.0] - 2025-03-02
 
