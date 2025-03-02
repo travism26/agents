@@ -6,7 +6,19 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 
 ### Added
 
-- Research Agent Development (in progress)
+- Company Research Implementation (in progress)
+- Research Agent API (planned)
+
+## [0.3.0] - 2025-03-02
+
+### Added
+
+- API client interfaces for standardized search results
+- Bing Search API client with error handling and rate limiting
+- Perplexity API client for AI-powered research
+- API client factory with environment variable configuration
+- Mock responses for testing API integrations
+- Comprehensive unit tests for all API clients
 
 ## [0.2.0] - 2025-03-01
 

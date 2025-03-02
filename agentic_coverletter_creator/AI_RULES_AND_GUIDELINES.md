@@ -427,4 +427,348 @@ sanitizeText(input: string, maxLength: number = 5000): string {
 }
 ```
 
+## 11. Coding Best Practices
+
+### SOLID Principles
+
+#### Single Responsibility Principle (SRP)
+
+- Each class should have only one reason to change
+- Classes should focus on doing one thing well
+- Promotes maintainability and testability
+
+Example:
+
+```typescript
+// Good: Each class has a single responsibility
+class ResumePdfParser {
+  parse(file: Buffer): ResumeData {
+    /* ... */
+  }
+}
+
+class ResumeDataValidator {
+  validate(data: ResumeData): ValidationResult {
+    /* ... */
+  }
+}
+
+// Bad: Class handling multiple responsibilities
+class ResumeHandler {
+  parsePdf(file: Buffer): ResumeData {
+    /* ... */
+  }
+  validateData(data: ResumeData): ValidationResult {
+    /* ... */
+  }
+  saveToDatabase(data: ResumeData): void {
+    /* ... */
+  }
+}
+```
+
+#### Open/Closed Principle (OCP)
+
+- Software entities should be open for extension but closed for modification
+- Extend functionality by adding new code, not changing existing code
+- Use interfaces, abstract classes, and polymorphism
+
+Example:
+
+```typescript
+// Good: Open for extension through interfaces
+interface SearchClient {
+  search(query: string): Promise<SearchResult[]>;
+}
+
+class BingSearchClient implements SearchClient {
+  search(query: string): Promise<SearchResult[]> {
+    /* Bing implementation */
+  }
+}
+
+class PerplexityClient implements SearchClient {
+  search(query: string): Promise<SearchResult[]> {
+    /* Perplexity implementation */
+  }
+}
+
+// Adding a new search provider doesn't require modifying existing code
+class GoogleSearchClient implements SearchClient {
+  search(query: string): Promise<SearchResult[]> {
+    /* Google implementation */
+  }
+}
+```
+
+#### Liskov Substitution Principle (LSP)
+
+- Subtypes must be substitutable for their base types without altering program correctness
+- Derived classes should extend, not replace, base class behavior
+- Ensures polymorphism works as expected
+
+Example:
+
+```typescript
+// Good: Derived classes maintain the contract of the base class
+abstract class DocumentParser {
+  abstract parse(file: Buffer): DocumentData;
+
+  getMetadata(file: Buffer): Metadata {
+    // Common implementation
+    return { size: file.length, timestamp: new Date() };
+  }
+}
+
+class ResumeParser extends DocumentParser {
+  parse(file: Buffer): ResumeData {
+    // Resume-specific parsing that fulfills the contract
+    return {
+      /* resume data */
+    };
+  }
+}
+
+class JobDescriptionParser extends DocumentParser {
+  parse(file: Buffer): JobDescriptionData {
+    // Job description-specific parsing that fulfills the contract
+    return {
+      /* job description data */
+    };
+  }
+}
+```
+
+#### Interface Segregation Principle (ISP)
+
+- Clients should not be forced to depend on interfaces they don't use
+- Many specific interfaces are better than one general-purpose interface
+- Prevents bloated interfaces and unnecessary dependencies
+
+Example:
+
+```typescript
+// Bad: One large interface that forces clients to implement unused methods
+interface Agent {
+  research(company: string): Promise<CompanyData>;
+  write(data: InputData): Promise<string>;
+  evaluate(text: string): Promise<EvaluationResult>;
+}
+
+// Good: Segregated interfaces for specific responsibilities
+interface ResearchAgent {
+  research(company: string): Promise<CompanyData>;
+}
+
+interface WriterAgent {
+  write(data: InputData): Promise<string>;
+}
+
+interface EvaluatorAgent {
+  evaluate(text: string): Promise<EvaluationResult>;
+}
+```
+
+#### Dependency Inversion Principle (DIP)
+
+- High-level modules should not depend on low-level modules; both should depend on abstractions
+- Abstractions should not depend on details; details should depend on abstractions
+- Promotes loose coupling and easier testing
+
+Example:
+
+```typescript
+// Bad: Direct dependency on concrete implementation
+class CoverLetterGenerator {
+  private bingSearchClient = new BingSearchClient();
+
+  async generate(
+    resume: Resume,
+    jobDescription: JobDescription
+  ): Promise<string> {
+    const companyInfo = await this.bingSearchClient.search(
+      jobDescription.company
+    );
+    // Generate cover letter using company info
+  }
+}
+
+// Good: Dependency on abstraction, injected through constructor
+class CoverLetterGenerator {
+  constructor(private searchClient: SearchClient) {}
+
+  async generate(
+    resume: Resume,
+    jobDescription: JobDescription
+  ): Promise<string> {
+    const companyInfo = await this.searchClient.search(jobDescription.company);
+    // Generate cover letter using company info
+  }
+}
+```
+
+### Other Core Principles
+
+#### DRY (Don't Repeat Yourself)
+
+- Avoid code duplication by abstracting common functionality
+- Each piece of knowledge should have a single, unambiguous representation
+- Use functions, classes, and modules to encapsulate reusable logic
+
+Example:
+
+```typescript
+// Bad: Repeated validation logic
+function validateResume(resume: Resume): boolean {
+  if (!resume.name || resume.name.length < 2) return false;
+  if (!resume.email || !resume.email.includes('@')) return false;
+  // More validation...
+  return true;
+}
+
+function validateJobDescription(job: JobDescription): boolean {
+  if (!job.title || job.title.length < 2) return false;
+  if (!job.company || !job.company.includes('@')) return false;
+  // More validation...
+  return true;
+}
+
+// Good: Reusable validation utility
+function validateField(value: string, minLength: number = 2): boolean {
+  return !!value && value.length >= minLength;
+}
+
+function validateEmail(email: string): boolean {
+  return !!email && email.includes('@');
+}
+
+function validateResume(resume: Resume): boolean {
+  return validateField(resume.name) && validateEmail(resume.email);
+}
+
+function validateJobDescription(job: JobDescription): boolean {
+  return validateField(job.title) && validateField(job.company);
+}
+```
+
+#### KISS (Keep It Simple, Stupid)
+
+- Prefer simple solutions over complex ones
+- Avoid over-engineering and premature optimization
+- Code should be easy to understand and maintain
+
+Guidelines:
+
+- Write self-documenting code with clear naming
+- Break complex functions into smaller, focused functions
+- Avoid unnecessary abstractions and indirection
+- Solve the current problem, not hypothetical future problems
+
+#### YAGNI (You Aren't Gonna Need It)
+
+- Don't add functionality until it's necessary
+- Implement features when required, not when anticipated
+- Reduces complexity, maintenance burden, and waste
+
+Guidelines:
+
+- Focus on current requirements, not potential future needs
+- Refactor when patterns emerge, not before
+- Avoid speculative generality and "just in case" code
+- Build the simplest solution that meets current needs
+
+#### Composition Over Inheritance
+
+- Prefer composing objects over inheritance hierarchies
+- Use has-a relationships instead of is-a when possible
+- Promotes flexibility and reduces tight coupling
+
+Example:
+
+```typescript
+// Bad: Deep inheritance hierarchy
+class Agent {}
+class ResearchAgent extends Agent {}
+class BingResearchAgent extends ResearchAgent {}
+
+// Good: Composition with interfaces
+interface SearchCapability {
+  search(query: string): Promise<SearchResult[]>;
+}
+
+class BingSearchCapability implements SearchCapability {
+  search(query: string): Promise<SearchResult[]> {
+    /* ... */
+  }
+}
+
+class ResearchAgent {
+  constructor(private searchCapability: SearchCapability) {}
+
+  async research(company: string): Promise<CompanyData> {
+    const results = await this.searchCapability.search(company);
+    // Process results
+    return {
+      /* company data */
+    };
+  }
+}
+```
+
+#### Law of Demeter (Principle of Least Knowledge)
+
+- Objects should only communicate with their immediate neighbors
+- Minimize dependencies between components
+- Reduces coupling and improves maintainability
+
+Guidelines:
+
+- A method of an object should only call methods of:
+  - The object itself
+  - Objects passed as parameters
+  - Objects created within the method
+  - Direct component objects
+- Avoid method chaining like `a.getB().getC().doSomething()`
+
+Example:
+
+```typescript
+// Bad: Violates Law of Demeter
+function generateCoverLetter(orchestrator: Orchestrator): string {
+  return orchestrator.getResearchAgent().getCompanyInfo().getDescription();
+}
+
+// Good: Respects Law of Demeter
+function generateCoverLetter(orchestrator: Orchestrator): string {
+  return orchestrator.getCompanyDescription();
+}
+```
+
+### Implementation Requirements
+
+When implementing features for this project:
+
+1. **Apply SOLID principles** to all new classes and interfaces
+2. **Identify and eliminate code duplication** using appropriate abstractions
+3. **Simplify complex logic** by breaking it down into smaller, focused functions
+4. **Avoid premature optimization** and unnecessary features
+5. **Use composition** to build flexible, modular components
+6. **Minimize dependencies** between components
+7. **Write unit tests** that verify adherence to these principles
+
+### Code Review Checklist
+
+When reviewing code, check for:
+
+- [ ] Single Responsibility: Does each class/function do only one thing?
+- [ ] Open/Closed: Can the code be extended without modification?
+- [ ] Liskov Substitution: Do derived classes maintain the contract of base classes?
+- [ ] Interface Segregation: Are interfaces focused and minimal?
+- [ ] Dependency Inversion: Are dependencies properly abstracted and injected?
+- [ ] DRY: Is there any duplicated code that could be abstracted?
+- [ ] KISS: Is the solution unnecessarily complex?
+- [ ] YAGNI: Are there features or abstractions that aren't needed yet?
+- [ ] Composition: Is inheritance used appropriately?
+- [ ] Law of Demeter: Does the code minimize dependencies between components?
+
 Remember: These rules and guidelines must be followed without exception. Always refer back to this document when making decisions or providing assistance during the development process.
