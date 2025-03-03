@@ -2,6 +2,37 @@ import { Request, Response } from 'express';
 import { ResumeParser } from '../utils/resumeParser';
 import { InputSanitizer } from '../utils/inputSanitizer';
 import logger from '../utils/logger';
+import { WriterAgent, CoverLetterTone } from '../agents/writer/WriterAgent';
+import { ResearchAgent } from '../agents/research/ResearchAgent';
+import { z } from 'zod';
+
+/**
+ * Validation schema for cover letter generation requests
+ */
+const coverLetterGenerationSchema = z.object({
+  companyName: z.string().min(1, 'Company name is required'),
+  jobTitle: z.string().min(1, 'Job title is required'),
+  jobDescription: z.string().optional(),
+  tonePreference: z
+    .enum([
+      CoverLetterTone.PROFESSIONAL,
+      CoverLetterTone.ENTHUSIASTIC,
+      CoverLetterTone.CONFIDENT,
+      CoverLetterTone.CREATIVE,
+      CoverLetterTone.BALANCED,
+    ])
+    .optional(),
+  maxLength: z.number().positive().optional(),
+  customInstructions: z.string().optional(),
+  resume: z.any().optional(), // Will be validated separately
+  options: z
+    .object({
+      skipResearch: z.boolean().optional(),
+      cacheResults: z.boolean().optional(),
+      preferredLLMModel: z.string().optional(),
+    })
+    .optional(),
+});
 
 /**
  * Controller for handling cover letter generation requests
@@ -9,10 +40,14 @@ import logger from '../utils/logger';
 export class CoverLetterController {
   private resumeParser: ResumeParser;
   private inputSanitizer: InputSanitizer;
+  private writerAgent: WriterAgent;
+  private researchAgent: ResearchAgent;
 
   constructor() {
     this.resumeParser = new ResumeParser();
     this.inputSanitizer = new InputSanitizer();
+    this.writerAgent = new WriterAgent();
+    this.researchAgent = new ResearchAgent();
   }
 
   /**
@@ -23,29 +58,37 @@ export class CoverLetterController {
    */
   async generateCoverLetter(req: Request, res: Response): Promise<void> {
     try {
-      // Extract and sanitize inputs
-      const { companyName, jobTitle, jobDescription, tonePreference } =
-        req.body;
+      // Validate request body against schema
+      const validationResult = coverLetterGenerationSchema.safeParse(req.body);
 
-      // Validate required fields
-      if (!companyName || !jobTitle) {
+      if (!validationResult.success) {
         res.status(400).json({
           error: 'Bad Request',
-          message: 'Company name and job title are required',
+          message: 'Invalid request parameters',
+          details: validationResult.error.format(),
         });
         return;
       }
 
-      // Sanitize inputs
+      // Extract and sanitize inputs
+      const {
+        companyName,
+        jobTitle,
+        jobDescription,
+        tonePreference,
+        maxLength,
+        customInstructions,
+        options,
+      } = validationResult.data;
+
       const sanitizedCompanyName =
         this.inputSanitizer.sanitizeCompanyName(companyName);
       const sanitizedJobTitle = this.inputSanitizer.sanitizeJobTitle(jobTitle);
       const sanitizedJobDescription = jobDescription
         ? this.inputSanitizer.sanitizeJobDescription(jobDescription)
-        : undefined;
-      const sanitizedTonePreference = tonePreference
-        ? this.inputSanitizer.sanitizeTonePreference(tonePreference)
-        : 'balanced';
+        : '';
+      const sanitizedTonePreference =
+        tonePreference || CoverLetterTone.BALANCED;
 
       // Parse resume from request (if provided)
       let resume;
@@ -92,23 +135,67 @@ export class CoverLetterController {
         return;
       }
 
-      // TODO: Implement actual cover letter generation using the orchestrator
-      // This is a placeholder response until the orchestrator is implemented
+      // Log the cover letter generation request
       logger.info('Cover letter generation requested', {
         company: sanitizedCompanyName,
         jobTitle: sanitizedJobTitle,
         tonePreference: sanitizedTonePreference,
       });
 
-      // Return a placeholder response
+      // Perform company research if not skipped
+      let companyInfo = '';
+      let companyValues: string[] = [];
+
+      if (!options?.skipResearch) {
+        try {
+          const researchResult = await this.researchAgent.researchCompany(
+            sanitizedCompanyName,
+            sanitizedJobDescription,
+            {
+              cacheResults: options?.cacheResults,
+            }
+          );
+
+          // Extract relevant information from research results
+          companyInfo = researchResult.companyInfo.description || '';
+          companyValues = researchResult.companyValues;
+
+          logger.info('Company research completed successfully', {
+            company: sanitizedCompanyName,
+          });
+        } catch (error) {
+          logger.warn(
+            'Error during company research, proceeding without research data',
+            {
+              error: error instanceof Error ? error.message : String(error),
+            }
+          );
+        }
+      }
+
+      // Generate cover letter
+      const coverLetterResult = await this.writerAgent.generateCoverLetter({
+        candidateName: resume.personalInfo?.name || 'Candidate',
+        jobTitle: sanitizedJobTitle,
+        companyName: sanitizedCompanyName,
+        companyInfo: companyInfo,
+        companyValues: companyValues.join(', '),
+        jobDescription: sanitizedJobDescription,
+        candidateSkills: resume.skills?.join(', ') || '',
+        candidateExperience: this.formatExperience(resume.experience),
+        candidateEducation: this.formatEducation(resume.education),
+        tone: sanitizedTonePreference,
+        maxLength: maxLength,
+        customInstructions: customInstructions,
+      });
+
+      // Return the generated cover letter
       res.status(200).json({
-        message: 'Cover letter generation is not yet implemented',
-        inputs: {
-          companyName: sanitizedCompanyName,
-          jobTitle: sanitizedJobTitle,
-          jobDescription: sanitizedJobDescription,
-          tonePreference: sanitizedTonePreference,
-          resumeProvided: !!resume,
+        success: true,
+        data: {
+          coverLetter: coverLetterResult.coverLetter,
+          metadata: coverLetterResult.metadata,
+          companyResearchUsed: !options?.skipResearch,
         },
       });
     } catch (error) {
@@ -120,7 +207,86 @@ export class CoverLetterController {
       res.status(500).json({
         error: 'Internal Server Error',
         message: 'Failed to generate cover letter',
+        details: error instanceof Error ? error.message : undefined,
       });
     }
+  }
+
+  /**
+   * Get token usage statistics for the writer agent
+   *
+   * @param _req - Express request object
+   * @param res - Express response object
+   */
+  getTokenUsage(_req: Request, res: Response): void {
+    try {
+      const tokenUsage = this.writerAgent.getTokenUsage();
+      const clientName = this.writerAgent.getLLMClientName();
+
+      res.status(200).json({
+        success: true,
+        data: {
+          clientName,
+          tokenUsage,
+        },
+      });
+    } catch (error) {
+      logger.error('Error getting token usage', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+
+      res.status(500).json({
+        error: 'Internal Server Error',
+        message: 'Failed to get token usage',
+      });
+    }
+  }
+
+  /**
+   * Format experience data for the cover letter
+   *
+   * @param experience - Array of experience items from resume
+   * @returns Formatted experience string
+   */
+  private formatExperience(experience?: any[]): string {
+    if (!experience || !Array.isArray(experience) || experience.length === 0) {
+      return '';
+    }
+
+    return experience
+      .map((exp) => {
+        const company = exp.company || 'Unknown Company';
+        const position = exp.position || 'Unknown Position';
+        const duration =
+          exp.startDate && exp.endDate
+            ? `${exp.startDate} - ${exp.endDate}`
+            : 'Unknown Duration';
+
+        return `${position} at ${company} (${duration})`;
+      })
+      .join('; ');
+  }
+
+  /**
+   * Format education data for the cover letter
+   *
+   * @param education - Array of education items from resume
+   * @returns Formatted education string
+   */
+  private formatEducation(education?: any[]): string {
+    if (!education || !Array.isArray(education) || education.length === 0) {
+      return '';
+    }
+
+    return education
+      .map((edu) => {
+        const institution = edu.institution || 'Unknown Institution';
+        const degree = edu.degree || 'Unknown Degree';
+        const year = edu.year || '';
+
+        return `${degree} from ${institution}${year ? ` (${year})` : ''}`;
+      })
+      .join('; ');
   }
 }

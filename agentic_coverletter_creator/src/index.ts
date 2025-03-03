@@ -45,6 +45,11 @@ app.post(
     coverLetterController.generateCoverLetter(req, res)
 );
 
+// Writer routes
+app.get('/api/writer/token-usage', (req: Request, res: Response) =>
+  coverLetterController.getTokenUsage(req, res)
+);
+
 // Research routes
 app.post('/api/research/company', (req: Request, res: Response) =>
   researchController.researchCompany(req, res)

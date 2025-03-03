@@ -6,8 +6,21 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 
 ### Added
 
-- Writer Agent Controller (planned)
-- Cover Letter Generation API Endpoint (planned)
+- Evaluator Agent for quality assessment (planned)
+- Feedback loop for iterative improvement (planned)
+
+## [0.7.0] - 2025-03-03
+
+### Added
+
+- CoverLetterController with cover letter generation endpoint
+- Integration of ResearchAgent with WriterAgent for company research
+- Validation for cover letter generation parameters using Zod
+- Token usage tracking endpoint
+- Comprehensive error handling for edge cases
+- Resume data formatting for cover letter generation
+- Unit tests for the CoverLetterController
+- Express routes for writer endpoints
 
 ## [0.6.0] - 2025-03-02
 
