@@ -147,13 +147,13 @@ This blueprint breaks down the implementation into small, iterative steps that b
 
 #### 5.1 Evaluation Criteria Implementation [Priority: Medium]
 
-- [ ] 5.1.1 Create EvaluationCriteria class
+- [x] 5.1.1 Create EvaluationCriteria class
 - [ ] 5.1.2 Implement grammar and style checking
 - [ ] 5.1.3 Add relevance assessment
 - [ ] 5.1.4 Implement completeness verification
-- [ ] 5.1.5 Create scoring system
-- [ ] 5.1.6 Write tests for evaluation criteria
-- [ ] 5.1.7 Implement customizable evaluation parameters
+- [x] 5.1.5 Create scoring system
+- [x] 5.1.6 Write tests for evaluation criteria
+- [x] 5.1.7 Implement customizable evaluation parameters
 
 #### 5.2 Feedback Generation [Priority: Medium]
 

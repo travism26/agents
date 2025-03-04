@@ -6,7 +6,10 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 
 ### Added
 
-- Evaluator Agent for quality assessment (planned)
+- EvaluationCriteria class with scoring system
+- Customizable evaluation parameters
+- Unit tests for evaluation criteria
+- Evaluator Agent for quality assessment (in progress)
 - Feedback loop for iterative improvement (planned)
 
 ## [0.7.0] - 2025-03-03
