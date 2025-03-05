@@ -9,6 +9,17 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 - Evaluator Agent API (in progress)
 - Integration with Orchestrator (planned)
 
+## [0.8.1] - 2025-03-05
+
+### Changed
+
+- Standardized all prompts to use XML format across the application
+- Updated EvaluatorAgent prompts for grammar, style, relevance, completeness, and summary generation
+- Updated EvaluationCriteria prompts for all evaluation categories
+- Updated FeedbackLoop prompt for cover letter improvement
+- Ensured consistent XML structure with purpose, content, and requirements sections
+- Improved readability and maintainability of prompt templates
+
 ## [0.8.0] - 2025-03-05
 
 ### Added

@@ -236,73 +236,95 @@ export class EvaluationCriteria {
       string
     >;
 
-    // Grammar and style prompt
+    // Grammar prompt
     prompts[EvaluationCategory.GRAMMAR] = `
-      Evaluate the following cover letter for grammar, spelling, and punctuation.
-      Identify any errors and suggest corrections.
-      
-      Cover Letter:
-      ${coverLetter}
-      
-      Provide a score from 0-100 and specific feedback on grammar issues.
-    `;
+<GrammarEvaluationRequest>
+  <Purpose>Evaluate cover letter for grammar, spelling, and punctuation</Purpose>
+  <Task>Identify errors and suggest corrections</Task>
+  <CoverLetter>${coverLetter}</CoverLetter>
+  <Requirements>
+    <Score>Provide a score from 0-100</Score>
+    <Feedback>Provide specific feedback on grammar issues</Feedback>
+  </Requirements>
+</GrammarEvaluationRequest>`;
 
     // Style prompt
     prompts[EvaluationCategory.STYLE] = `
-      Evaluate the following cover letter for writing style, tone, clarity, and flow.
-      Consider professional tone, clear language, appropriate formality, and good paragraph transitions.
-      
-      Cover Letter:
-      ${coverLetter}
-      
-      Provide a score from 0-100 and specific feedback on style issues.
-    `;
+<StyleEvaluationRequest>
+  <Purpose>Evaluate cover letter for writing style, tone, clarity, and flow</Purpose>
+  <Considerations>
+    <Item>Professional tone</Item>
+    <Item>Clear language</Item>
+    <Item>Appropriate formality</Item>
+    <Item>Good paragraph transitions</Item>
+  </Considerations>
+  <CoverLetter>${coverLetter}</CoverLetter>
+  <Requirements>
+    <Score>Provide a score from 0-100</Score>
+    <Feedback>Provide specific feedback on style issues</Feedback>
+  </Requirements>
+</StyleEvaluationRequest>`;
 
     // Relevance prompt
     prompts[EvaluationCategory.RELEVANCE] = `
-      Evaluate how well the following cover letter addresses the specific job requirements and company values.
-      
-      Cover Letter:
-      ${coverLetter}
-      
-      Job Title: ${options.jobTitle}
-      Company: ${options.companyName}
-      Job Description: ${options.jobDescription}
-      Candidate Skills: ${options.candidateSkills}
-      Candidate Experience: ${options.candidateExperience}
-      
-      Provide a score from 0-100 and specific feedback on relevance issues.
-    `;
+<RelevanceEvaluationRequest>
+  <Purpose>Evaluate how well the cover letter addresses specific job requirements and company values</Purpose>
+  <CoverLetter>${coverLetter}</CoverLetter>
+  <JobDetails>
+    <JobTitle>${options.jobTitle}</JobTitle>
+    <Company>${options.companyName}</Company>
+    <JobDescription>${options.jobDescription}</JobDescription>
+    <CandidateSkills>${options.candidateSkills}</CandidateSkills>
+    <CandidateExperience>${options.candidateExperience}</CandidateExperience>
+  </JobDetails>
+  <Requirements>
+    <Score>Provide a score from 0-100</Score>
+    <Feedback>Provide specific feedback on relevance issues</Feedback>
+  </Requirements>
+</RelevanceEvaluationRequest>`;
 
     // Completeness prompt
     prompts[EvaluationCategory.COMPLETENESS] = `
-      Evaluate whether the following cover letter includes all necessary components:
-      1. Introduction with position and company name
-      2. Skills and experience highlights relevant to the position
-      3. Explanation of fit with company culture and values
-      4. Call to action (interview request)
-      5. Professional closing
-      
-      Cover Letter:
-      ${coverLetter}
-      
-      Provide a score from 0-100 and specific feedback on completeness issues.
-    `;
+<CompletenessEvaluationRequest>
+  <Purpose>Evaluate whether the cover letter includes all necessary components</Purpose>
+  <RequiredComponents>
+    <Component>Introduction with position and company name</Component>
+    <Component>Skills and experience highlights relevant to the position</Component>
+    <Component>Explanation of fit with company culture and values</Component>
+    <Component>Call to action (interview request)</Component>
+    <Component>Professional closing</Component>
+  </RequiredComponents>
+  <CoverLetter>${coverLetter}</CoverLetter>
+  <Requirements>
+    <Score>Provide a score from 0-100</Score>
+    <Feedback>Provide specific feedback on completeness issues</Feedback>
+  </Requirements>
+</CompletenessEvaluationRequest>`;
 
     // Overall evaluation prompt
     prompts[EvaluationCategory.OVERALL] = `
-      Provide an overall evaluation of the following cover letter for the position of ${options.jobTitle} at ${options.companyName}.
-      Consider grammar, style, relevance to the job requirements, and completeness.
-      
-      Cover Letter:
-      ${coverLetter}
-      
-      Job Description: ${options.jobDescription}
-      Candidate Skills: ${options.candidateSkills}
-      Candidate Experience: ${options.candidateExperience}
-      
-      Provide an overall score from 0-100, a summary of strengths and weaknesses, and prioritized improvement suggestions.
-    `;
+<OverallEvaluationRequest>
+  <Purpose>Provide an overall evaluation of the cover letter</Purpose>
+  <Position>${options.jobTitle}</Position>
+  <Company>${options.companyName}</Company>
+  <EvaluationAreas>
+    <Area>Grammar</Area>
+    <Area>Style</Area>
+    <Area>Relevance to job requirements</Area>
+    <Area>Completeness</Area>
+  </EvaluationAreas>
+  <CoverLetter>${coverLetter}</CoverLetter>
+  <JobDetails>
+    <JobDescription>${options.jobDescription}</JobDescription>
+    <CandidateSkills>${options.candidateSkills}</CandidateSkills>
+    <CandidateExperience>${options.candidateExperience}</CandidateExperience>
+  </JobDetails>
+  <Requirements>
+    <Score>Provide an overall score from 0-100</Score>
+    <Summary>Provide a summary of strengths and weaknesses</Summary>
+    <Improvements>Provide prioritized improvement suggestions</Improvements>
+  </Requirements>
+</OverallEvaluationRequest>`;
 
     return prompts;
   }

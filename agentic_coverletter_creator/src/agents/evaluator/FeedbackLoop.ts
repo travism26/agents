@@ -358,24 +358,23 @@ export class FeedbackLoop {
     try {
       // Create a prompt for the writer agent to improve the cover letter
       const prompt = `
-        Please improve the following cover letter based on the feedback provided.
-        
-        Original Cover Letter:
-        ${coverLetter}
-        
-        Feedback:
-        ${feedback}
-        
-        Job Title: ${evaluationOptions.jobTitle}
-        Company: ${evaluationOptions.companyName}
-        Job Description: ${evaluationOptions.jobDescription}
-        Candidate Skills: ${evaluationOptions.candidateSkills}
-        Candidate Experience: ${evaluationOptions.candidateExperience}
-        
-        Please provide an improved version of the cover letter that addresses the feedback.
-        Maintain the same overall structure but enhance the content based on the feedback.
-        Focus particularly on the areas that received the lowest scores.
-      `;
+<CoverLetterImprovementRequest>
+  <Purpose>Improve the cover letter based on feedback provided</Purpose>
+  <OriginalCoverLetter>${coverLetter}</OriginalCoverLetter>
+  <Feedback>${feedback}</Feedback>
+  <JobDetails>
+    <JobTitle>${evaluationOptions.jobTitle}</JobTitle>
+    <Company>${evaluationOptions.companyName}</Company>
+    <JobDescription>${evaluationOptions.jobDescription}</JobDescription>
+    <CandidateSkills>${evaluationOptions.candidateSkills}</CandidateSkills>
+    <CandidateExperience>${evaluationOptions.candidateExperience}</CandidateExperience>
+  </JobDetails>
+  <Requirements>
+    <Item>Provide an improved version of the cover letter that addresses the feedback</Item>
+    <Item>Maintain the same overall structure but enhance the content</Item>
+    <Item>Focus particularly on the areas that received the lowest scores</Item>
+  </Requirements>
+</CoverLetterImprovementRequest>`;
 
       // Use the writer agent to generate an improved cover letter
       const improvedCoverLetter = await this.writerAgent.generateCoverLetter({

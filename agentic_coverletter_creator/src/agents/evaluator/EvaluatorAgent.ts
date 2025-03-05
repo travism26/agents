@@ -273,25 +273,24 @@ export class EvaluatorAgent {
 
     try {
       const prompt = `
-        Analyze the following cover letter for grammar, spelling, and punctuation errors.
-        Provide a detailed analysis with specific errors found, suggested corrections, and explanations.
-        
-        Cover Letter:
-        ${coverLetter}
-        
-        Return your analysis in the following JSON format:
-        {
-          "score": <number between 0-100 representing grammar quality>,
-          "errors": [
-            {
-              "text": "<problematic text>",
-              "suggestion": "<corrected text>",
-              "explanation": "<explanation of the error>"
-            }
-          ],
-          "feedback": "<overall feedback on grammar and spelling>"
-        }
-      `;
+<GrammarAnalysisRequest>
+  <Purpose>Analyze cover letter for grammar, spelling, and punctuation errors</Purpose>
+  <CoverLetter>${coverLetter}</CoverLetter>
+  <ReturnStructure>
+Return json output like below:
+{
+  "score": <number between 0-100 representing grammar quality>,
+  "errors": [
+    {
+      "text": "<problematic text>",
+      "suggestion": "<corrected text>",
+      "explanation": "<explanation of the error>"
+    }
+  ],
+  "feedback": "<overall feedback on grammar and spelling>"
+}
+  </ReturnStructure>
+</GrammarAnalysisRequest>`;
 
       const response = await this.llmClient.generate(prompt, {
         temperature: 0.3,
@@ -331,25 +330,30 @@ export class EvaluatorAgent {
 
     try {
       const prompt = `
-        Analyze the following cover letter for writing style, tone, clarity, and flow.
-        Consider professional tone, clear language, appropriate formality, and good paragraph transitions.
-        
-        Cover Letter:
-        ${coverLetter}
-        
-        Return your analysis in the following JSON format:
-        {
-          "score": <number between 0-100 representing style quality>,
-          "issues": [
-            {
-              "issue": "<description of the style issue>",
-              "suggestion": "<suggested improvement>",
-              "explanation": "<explanation of why this is an issue>"
-            }
-          ],
-          "feedback": "<overall feedback on writing style>"
-        }
-      `;
+<StyleAnalysisRequest>
+  <Purpose>Analyze cover letter for writing style, tone, clarity, and flow</Purpose>
+  <Considerations>
+    <Item>Professional tone</Item>
+    <Item>Clear language</Item>
+    <Item>Appropriate formality</Item>
+    <Item>Good paragraph transitions</Item>
+  </Considerations>
+  <CoverLetter>${coverLetter}</CoverLetter>
+  <ReturnStructure>
+Return json output like below:
+{
+  "score": <number between 0-100 representing style quality>,
+  "issues": [
+    {
+      "issue": "<description of the style issue>",
+      "suggestion": "<suggested improvement>",
+      "explanation": "<explanation of why this is an issue>"
+    }
+  ],
+  "feedback": "<overall feedback on writing style>"
+}
+  </ReturnStructure>
+</StyleAnalysisRequest>`;
 
       const response = await this.llmClient.generate(prompt, {
         temperature: 0.3,
@@ -393,26 +397,27 @@ export class EvaluatorAgent {
 
     try {
       const prompt = `
-        Analyze how well the following cover letter addresses the specific job requirements and company values.
-        
-        Cover Letter:
-        ${coverLetter}
-        
-        Job Title: ${options.jobTitle}
-        Company: ${options.companyName}
-        Job Description: ${options.jobDescription}
-        Candidate Skills: ${options.candidateSkills}
-        Candidate Experience: ${options.candidateExperience}
-        
-        Return your analysis in the following JSON format:
-        {
-          "score": <number between 0-100 representing relevance>,
-          "strengths": ["<strength 1>", "<strength 2>", ...],
-          "weaknesses": ["<weakness 1>", "<weakness 2>", ...],
-          "missingKeywords": ["<important keyword 1>", "<important keyword 2>", ...],
-          "feedback": "<overall feedback on relevance>"
-        }
-      `;
+<RelevanceAnalysisRequest>
+  <Purpose>Analyze how well the cover letter addresses specific job requirements and company values</Purpose>
+  <CoverLetter>${coverLetter}</CoverLetter>
+  <JobDetails>
+    <JobTitle>${options.jobTitle}</JobTitle>
+    <Company>${options.companyName}</Company>
+    <JobDescription>${options.jobDescription}</JobDescription>
+    <CandidateSkills>${options.candidateSkills}</CandidateSkills>
+    <CandidateExperience>${options.candidateExperience}</CandidateExperience>
+  </JobDetails>
+  <ReturnStructure>
+Return json output like below:
+{
+  "score": <number between 0-100 representing relevance>,
+  "strengths": ["<strength 1>", "<strength 2>", ...],
+  "weaknesses": ["<weakness 1>", "<weakness 2>", ...],
+  "missingKeywords": ["<important keyword 1>", "<important keyword 2>", ...],
+  "feedback": "<overall feedback on relevance>"
+}
+  </ReturnStructure>
+</RelevanceAnalysisRequest>`;
 
       const response = await this.llmClient.generate(prompt, {
         temperature: 0.3,
@@ -460,27 +465,30 @@ export class EvaluatorAgent {
 
     try {
       const prompt = `
-        Evaluate whether the following cover letter includes all necessary components:
-        1. Introduction with position and company name
-        2. Skills and experience highlights relevant to the position
-        3. Explanation of fit with company culture and values
-        4. Call to action (interview request)
-        5. Professional closing
-        
-        Cover Letter:
-        ${coverLetter}
-        
-        Job Title: ${options.jobTitle}
-        Company: ${options.companyName}
-        
-        Return your analysis in the following JSON format:
-        {
-          "score": <number between 0-100 representing completeness>,
-          "missingComponents": ["<missing component 1>", "<missing component 2>", ...],
-          "weakComponents": ["<weak component 1>", "<weak component 2>", ...],
-          "feedback": "<overall feedback on completeness>"
-        }
-      `;
+<CompletenessAnalysisRequest>
+  <Purpose>Evaluate whether the cover letter includes all necessary components</Purpose>
+  <RequiredComponents>
+    <Component>Introduction with position and company name</Component>
+    <Component>Skills and experience highlights relevant to the position</Component>
+    <Component>Explanation of fit with company culture and values</Component>
+    <Component>Call to action (interview request)</Component>
+    <Component>Professional closing</Component>
+  </RequiredComponents>
+  <CoverLetter>${coverLetter}</CoverLetter>
+  <JobDetails>
+    <JobTitle>${options.jobTitle}</JobTitle>
+    <Company>${options.companyName}</Company>
+  </JobDetails>
+  <ReturnStructure>
+Return json output like below:
+{
+  "score": <number between 0-100 representing completeness>,
+  "missingComponents": ["<missing component 1>", "<missing component 2>", ...],
+  "weakComponents": ["<weak component 1>", "<weak component 2>", ...],
+  "feedback": "<overall feedback on completeness>"
+}
+  </ReturnStructure>
+</CompletenessAnalysisRequest>`;
 
       const response = await this.llmClient.generate(prompt, {
         temperature: 0.3,
@@ -540,20 +548,24 @@ export class EvaluatorAgent {
         .join('\n');
 
       const prompt = `
-        Create a concise summary of the following cover letter evaluation.
-        
-        Overall Score: ${overallScore}
-        Overall Level: ${overallLevel}
-        
-        Detailed Feedback:
-        ${feedbackSummary}
-        
-        Cover Letter:
-        ${coverLetter}
-        
-        Provide a 3-5 sentence summary that highlights the main strengths and areas for improvement.
-        Focus on actionable insights and prioritize the most important feedback.
-      `;
+<SummaryRequest>
+  <Purpose>Create a concise summary of the cover letter evaluation</Purpose>
+  <EvaluationDetails>
+    <OverallScore>${overallScore}</OverallScore>
+    <OverallLevel>${overallLevel}</OverallLevel>
+    <DetailedFeedback>${feedbackSummary}</DetailedFeedback>
+  </EvaluationDetails>
+  <CoverLetter>${coverLetter}</CoverLetter>
+  <Requirements>
+    <Length>3-5 sentences</Length>
+    <Focus>
+      <Item>Main strengths</Item>
+      <Item>Areas for improvement</Item>
+      <Item>Actionable insights</Item>
+      <Item>Prioritized feedback</Item>
+    </Focus>
+  </Requirements>
+</SummaryRequest>`;
 
       const response = await this.llmClient.generate(prompt, {
         temperature: 0.5,

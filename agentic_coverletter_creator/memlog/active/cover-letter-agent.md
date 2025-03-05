@@ -78,6 +78,16 @@ Status: Pending
 
 ## Recent Updates (Last 2 weeks)
 
+[2025-03-05 06:26:00]
+
+- Standardized all prompts to use XML format across the application
+- Updated EvaluatorAgent prompts for grammar, style, relevance, completeness, and summary generation
+- Updated EvaluationCriteria prompts for all evaluation categories
+- Updated FeedbackLoop prompt for cover letter improvement
+- Ensured consistent XML structure with purpose, content, and requirements sections
+- Maintained backward compatibility with existing functionality
+- Improved readability and maintainability of prompt templates
+
 [2025-03-05 06:05:00]
 
 - Completed core Evaluator Agent Development
