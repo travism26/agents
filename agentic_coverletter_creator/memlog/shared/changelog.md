@@ -6,11 +6,23 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 
 ### Added
 
-- EvaluationCriteria class with scoring system
-- Customizable evaluation parameters
-- Unit tests for evaluation criteria
-- Evaluator Agent for quality assessment (in progress)
-- Feedback loop for iterative improvement (planned)
+- Evaluator Agent API (in progress)
+- Integration with Orchestrator (planned)
+
+## [0.8.0] - 2025-03-05
+
+### Added
+
+- EvaluatorAgent class with LLM-based evaluation capabilities
+- Grammar and style checking functionality
+- Relevance assessment for job and company fit
+- Completeness verification for cover letter components
+- Structured feedback generation with improvement suggestions
+- FeedbackLoop class for iterative cover letter improvement
+- Termination conditions based on score, improvement, and iteration count
+- Comprehensive error handling and progress tracking
+- Unit tests for EvaluatorAgent and FeedbackLoop classes
+- Version comparison for tracking changes between iterations
 
 ## [0.7.0] - 2025-03-03
 
