@@ -64,17 +64,31 @@ export class PerplexityClient extends BaseApiClient {
     logger.info(`Performing Perplexity search for query: ${query}`);
 
     try {
-      // Prepare request body
+      // Prepare request body using the updated API format
       const requestBody = {
-        model: options.model || 'pplx-7b-online',
-        query: query,
+        model: options.model || 'sonar',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a helpful research assistant. Provide detailed and accurate information.',
+          },
+          {
+            role: 'user',
+            content: query,
+          },
+        ],
         max_tokens: options.maxTokens || 1024,
         temperature: options.temperature || 0.7,
-        search_focus: options.searchFocus || 'internet',
+        top_p: 0.9,
+        stream: false,
       };
 
-      // Make the API request
-      const response = await this.axiosInstance.post('/query', requestBody);
+      // Make the API request to the updated endpoint
+      const response = await this.axiosInstance.post(
+        '/chat/completions',
+        requestBody
+      );
 
       // Process and standardize the results
       return this.processSearchResults(response.data, query);
@@ -101,36 +115,41 @@ export class PerplexityClient extends BaseApiClient {
    * @returns Standardized search results
    */
   private processSearchResults(data: any, query: string): SearchResult[] {
-    if (!data || !data.answer) {
+    // Check if we have a valid response with choices
+    if (!data || !data.choices || data.choices.length === 0) {
       return [];
     }
 
-    // Extract sources from the response if available
-    const sources = data.sources || [];
-    const results: SearchResult[] = [];
+    // Extract the answer from the response
+    const answer = data.choices[0]?.message?.content;
+    if (!answer) {
+      return [];
+    }
 
-    // Add sources as search results
-    sources.forEach((source: any) => {
-      if (source.url) {
-        results.push({
-          title: source.title || 'Perplexity Source',
-          url: source.url,
-          snippet: source.snippet || '',
-          source: 'Perplexity',
-          publishedDate: source.published_date || undefined,
-        });
-      }
-    });
-
-    // If no sources were found but we have an answer, create a single result
-    if (results.length === 0 && data.answer) {
-      results.push({
+    // Create a result from the answer
+    const results: SearchResult[] = [
+      {
         title: `Perplexity Answer: ${query.substring(0, 50)}${
           query.length > 50 ? '...' : ''
         }`,
         url: '', // No URL for direct answers
-        snippet: data.answer,
+        snippet: answer,
         source: 'Perplexity',
+      },
+    ];
+
+    // Try to extract any links or citations from the answer
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urls = answer.match(urlRegex);
+
+    if (urls) {
+      urls.forEach((url: string) => {
+        results.push({
+          title: 'Referenced Source',
+          url: url,
+          snippet: `Source URL extracted from Perplexity response`,
+          source: 'Perplexity',
+        });
       });
     }
 

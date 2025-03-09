@@ -96,19 +96,39 @@ export class CoverLetterController {
         const buffer = req.file.buffer;
         const fileType = req.file.mimetype;
 
+        // Log file information for debugging
+        logger.info('Processing uploaded file', {
+          filename: req.file.originalname,
+          mimetype: fileType,
+          size: req.file.size,
+        });
+
         if (fileType === 'application/pdf') {
           resume = await this.resumeParser.parseFromPDF(buffer);
         } else if (
           fileType ===
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+          // Add support for alternative DOCX MIME types
+          fileType === 'application/msword' ||
+          fileType === 'application/vnd.ms-word.document.macroEnabled.12' ||
+          // Handle case where MIME type might be detected incorrectly
+          (req.file.originalname.toLowerCase().endsWith('.docx') &&
+            (fileType === 'application/octet-stream' ||
+              fileType.includes('word')))
         ) {
+          logger.info('Processing DOCX file', { mimetype: fileType });
           resume = await this.resumeParser.parseFromDOCX(buffer);
         } else if (fileType === 'application/json') {
           resume = this.resumeParser.parseFromJSON(buffer.toString());
         } else {
+          logger.warn('Unsupported file format', {
+            mimetype: fileType,
+            filename: req.file.originalname,
+          });
           res.status(400).json({
             error: 'Bad Request',
             message: 'Unsupported file format',
+            details: `File type ${fileType} is not supported. Please upload a PDF, DOCX, or JSON file.`,
           });
           return;
         }
