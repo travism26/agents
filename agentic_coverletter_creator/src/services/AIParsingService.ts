@@ -1,0 +1,408 @@
+import {
+  BaseLLMClient,
+  LLMGenerationOptions,
+} from '../agents/writer/interfaces/LLMClient';
+import logger from '../utils/logger';
+import { Resume, ResumeSchema } from '../utils/resumeParser';
+import { z } from 'zod';
+
+/**
+ * Result of parsing a resume with AI
+ */
+export interface ParsingResult {
+  data: Resume | null;
+  confidence: {
+    overall: number;
+    sections: Record<string, number>;
+  };
+  errors: Array<{
+    section: string;
+    error: string;
+    severity: 'high' | 'medium' | 'low';
+  }>;
+  warnings: Array<{
+    section: string;
+    message: string;
+    suggestion: string;
+  }>;
+}
+
+/**
+ * Metrics for resume parsing
+ */
+export interface ParserMetrics {
+  method: 'ai' | 'legacy';
+  duration: number;
+  success: boolean;
+  fallbackTriggered: boolean;
+  confidenceScore?: number;
+}
+
+/**
+ * Service for parsing resumes using AI
+ */
+export class AIParsingService {
+  private llmClient: BaseLLMClient;
+
+  /**
+   * Creates a new AIParsingService
+   * @param llmClient LLM client to use for parsing
+   */
+  constructor(llmClient: BaseLLMClient) {
+    this.llmClient = llmClient;
+  }
+
+  /**
+   * Parse a resume using AI
+   * @param text Resume text to parse
+   * @returns Parsed resume data and metadata
+   */
+  async parseResume(text: string): Promise<ParsingResult> {
+    const startTime = Date.now();
+    let success = false;
+    let fallbackTriggered = false;
+    let confidenceScore = 0;
+
+    try {
+      logger.info('Parsing resume with AI', { textLength: text.length });
+
+      const prompt = this.createStructuredPrompt(text);
+      const options: LLMGenerationOptions = {
+        temperature: 0.2, // Lower temperature for more deterministic output
+        systemPrompt:
+          'You are an expert resume parser that extracts structured information from resumes.',
+        maxTokens: 2500, // Ensure enough tokens for complete resume parsing
+      };
+
+      const response = await this.llmClient.generate(prompt, options);
+
+      // Extract JSON from response
+      const jsonMatch = response.text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Failed to extract JSON from LLM response');
+      }
+
+      const parsedData = JSON.parse(jsonMatch[0]);
+      const validationResult = this.validateResponse(parsedData);
+
+      success = true;
+      confidenceScore = validationResult.confidence.overall;
+
+      return validationResult;
+    } catch (error) {
+      logger.error('Error parsing resume with AI', { error });
+
+      fallbackTriggered = true;
+
+      return {
+        data: null,
+        confidence: {
+          overall: 0,
+          sections: {},
+        },
+        errors: [
+          {
+            section: 'overall',
+            error: error instanceof Error ? error.message : 'Unknown error',
+            severity: 'high',
+          },
+        ],
+        warnings: [],
+      };
+    } finally {
+      // Track metrics
+      this.trackParsingMetrics({
+        method: 'ai',
+        duration: Date.now() - startTime,
+        success,
+        fallbackTriggered,
+        confidenceScore,
+      });
+    }
+  }
+
+  /**
+   * Create a structured prompt for resume parsing
+   * @param text Resume text to parse
+   * @returns Structured prompt
+   */
+  private createStructuredPrompt(text: string): string {
+    return `
+<ResumeParsingRequest>
+  <Purpose>Extract structured information from resume text into a standardized JSON format</Purpose>
+  
+  <InputText>${text}</InputText>
+  
+  <ParsingInstructions>
+    - Extract all relevant information from the resume
+    - Categorize skills by domain and expertise level
+    - Convert dates to ISO format
+    - Identify current positions
+    - Extract quantifiable achievements
+    - Maintain consistent formatting
+  </ParsingInstructions>
+
+  <ReturnStructure>
+    Return a JSON object with the following structure:
+    {
+      "personalInfo": {
+        "name": string,
+        "email": string,
+        "phone": string?,
+        "location": {
+          "city": string?,
+          "state": string?,
+          "country": string?
+        },
+        "linkedIn": string?,
+        "portfolio": string?
+      },
+      "summary": string?,
+      "experience": [{
+        "title": string,
+        "company": string,
+        "location": string?,
+        "startDate": string,  // ISO format
+        "endDate": string?,   // ISO format
+        "current": boolean,
+        "highlights": string[],
+        "technologies": string[],
+        "achievements": string[]
+      }],
+      "education": [{
+        "degree": string,
+        "institution": string,
+        "location": string?,
+        "startDate": string?,
+        "endDate": string?,
+        "gpa": string?,
+        "honors": string[],
+        "relevantCourses": string[]
+      }],
+      "skills": [{
+        "name": string,
+        "category": string,
+        "level": string?,
+        "yearsOfExperience": number?
+      }],
+      "certifications": [{
+        "name": string,
+        "issuer": string,
+        "date": string?,
+        "expiryDate": string?,
+        "id": string?
+      }],
+      "projects": [{
+        "name": string,
+        "description": string,
+        "technologies": string[],
+        "url": string?,
+        "highlights": string[]
+      }],
+      "languages": [{
+        "name": string,
+        "proficiency": string
+      }]
+    }
+  </ReturnStructure>
+
+  <ValidationRules>
+    - All dates must be in ISO format (YYYY-MM-DD)
+    - Email must be valid format
+    - URLs must include http/https
+    - Skills must have valid categories
+    - Required fields cannot be empty
+  </ValidationRules>
+</ResumeParsingRequest>`;
+  }
+
+  /**
+   * Validate and process the LLM response
+   * @param response Parsed JSON response from LLM
+   * @returns Validated parsing result
+   */
+  private validateResponse(response: any): ParsingResult {
+    const errors: ParsingResult['errors'] = [];
+    const warnings: ParsingResult['warnings'] = [];
+    const confidenceSections: Record<string, number> = {};
+
+    // Define enhanced schema for validation
+    const EnhancedResumeSchema = z.object({
+      personalInfo: z.object({
+        name: z.string(),
+        email: z.string().email().optional(),
+        phone: z.string().optional(),
+        location: z
+          .object({
+            city: z.string().optional(),
+            state: z.string().optional(),
+            country: z.string().optional(),
+          })
+          .optional(),
+        linkedIn: z.string().url().optional(),
+        portfolio: z.string().url().optional(),
+      }),
+      summary: z.string().optional(),
+      experience: z.array(
+        z.object({
+          title: z.string(),
+          company: z.string(),
+          location: z.string().optional(),
+          startDate: z.string(),
+          endDate: z.string().optional(),
+          current: z.boolean().optional(),
+          highlights: z.array(z.string()),
+          technologies: z.array(z.string()).optional(),
+          achievements: z.array(z.string()).optional(),
+        })
+      ),
+      education: z.array(
+        z.object({
+          degree: z.string(),
+          institution: z.string(),
+          location: z.string().optional(),
+          startDate: z.string().optional(),
+          endDate: z.string().optional(),
+          gpa: z.string().optional(),
+          honors: z.array(z.string()).optional(),
+          relevantCourses: z.array(z.string()).optional(),
+        })
+      ),
+      skills: z.array(
+        z.object({
+          name: z.string(),
+          category: z.string(),
+          level: z.string().optional(),
+          yearsOfExperience: z.number().optional(),
+        })
+      ),
+      certifications: z
+        .array(
+          z.object({
+            name: z.string(),
+            issuer: z.string(),
+            date: z.string().optional(),
+            expiryDate: z.string().optional(),
+            id: z.string().optional(),
+          })
+        )
+        .optional(),
+      projects: z
+        .array(
+          z.object({
+            name: z.string(),
+            description: z.string(),
+            technologies: z.array(z.string()),
+            url: z.string().url().optional(),
+            highlights: z.array(z.string()).optional(),
+          })
+        )
+        .optional(),
+      languages: z
+        .array(
+          z.object({
+            name: z.string(),
+            proficiency: z.string(),
+          })
+        )
+        .optional(),
+    });
+
+    // Validate against enhanced schema
+    const validationResult = EnhancedResumeSchema.safeParse(response);
+
+    if (!validationResult.success) {
+      // Process validation errors
+      validationResult.error.errors.forEach((err) => {
+        const section = err.path[0] as string;
+        errors.push({
+          section,
+          error: `${err.path.join('.')}: ${err.message}`,
+          severity: 'medium',
+        });
+
+        // Set low confidence for sections with errors
+        confidenceSections[section] = 0.3;
+      });
+    }
+
+    // Convert to standard Resume format
+    let standardizedData: Resume | null = null;
+
+    try {
+      // Map enhanced schema to standard Resume schema
+      const standardData: Resume = {
+        personalInfo: {
+          name: response.personalInfo.name,
+          email: response.personalInfo.email,
+          phone: response.personalInfo.phone,
+          location:
+            response.personalInfo.location?.city ||
+            [
+              response.personalInfo.location?.city,
+              response.personalInfo.location?.state,
+              response.personalInfo.location?.country,
+            ]
+              .filter(Boolean)
+              .join(', '),
+        },
+        experience: response.experience.map((exp: any) => ({
+          title: exp.title,
+          company: exp.company,
+          duration:
+            exp.startDate && exp.endDate
+              ? `${exp.startDate} - ${exp.endDate}`
+              : exp.startDate || '',
+          description: exp.highlights?.join('\n') || '',
+        })),
+        education: response.education.map((edu: any) => ({
+          degree: edu.degree,
+          institution: edu.institution,
+          year: edu.endDate || edu.startDate || '',
+        })),
+        skills: response.skills.map((skill: any) => skill.name),
+      };
+
+      // Validate against standard schema
+      standardizedData = ResumeSchema.parse(standardData);
+
+      // Set confidence for sections
+      Object.keys(standardizedData).forEach((key) => {
+        if (!(key in confidenceSections)) {
+          confidenceSections[key] = 0.9;
+        }
+      });
+    } catch (error) {
+      errors.push({
+        section: 'overall',
+        error: 'Failed to convert to standard Resume format',
+        severity: 'high',
+      });
+      logger.error('Error converting to standard Resume format', { error });
+    }
+
+    // Calculate overall confidence
+    const overallConfidence =
+      Object.values(confidenceSections).reduce((sum, value) => sum + value, 0) /
+      Math.max(1, Object.values(confidenceSections).length);
+
+    return {
+      data: standardizedData,
+      confidence: {
+        overall: overallConfidence,
+        sections: confidenceSections,
+      },
+      errors,
+      warnings,
+    };
+  }
+
+  /**
+   * Track parsing metrics
+   * @param metrics Metrics to track
+   */
+  private trackParsingMetrics(metrics: ParserMetrics): void {
+    // In a production environment, this would send metrics to a monitoring system
+    logger.info('Resume parsing metrics', { metrics });
+  }
+}

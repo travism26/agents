@@ -5,6 +5,9 @@ import logger from '../utils/logger';
 import { WriterAgent, CoverLetterTone } from '../agents/writer/WriterAgent';
 import { ResearchAgent } from '../agents/research/ResearchAgent';
 import { z } from 'zod';
+import { getFeatureFlags } from '../config/featureFlags';
+import { AIParsingService } from '../services/AIParsingService';
+import { OpenAIClient } from '../agents/writer/clients/OpenAIClient';
 
 /**
  * Validation schema for cover letter generation requests
@@ -44,10 +47,31 @@ export class CoverLetterController {
   private researchAgent: ResearchAgent;
 
   constructor() {
-    this.resumeParser = new ResumeParser();
+    // Get feature flags
+    const featureFlags = getFeatureFlags();
+
+    // Initialize services
     this.inputSanitizer = new InputSanitizer();
     this.writerAgent = new WriterAgent();
     this.researchAgent = new ResearchAgent();
+
+    // Initialize AI parsing service if feature flag is enabled
+    let aiParsingService;
+    if (featureFlags.useAIResumeParser) {
+      // Use the same OpenAI client that the writer agent uses
+      // In a production environment, you might want to inject this dependency
+      const openAIApiKey = process.env.OPENAI_API_KEY || '';
+      if (openAIApiKey) {
+        const openAIClient = new OpenAIClient(openAIApiKey);
+        aiParsingService = new AIParsingService(openAIClient);
+        logger.info('AI resume parsing service initialized');
+      } else {
+        logger.warn('OpenAI API key not found, AI resume parsing disabled');
+      }
+    }
+
+    // Initialize resume parser with feature flags and AI parsing service
+    this.resumeParser = new ResumeParser(featureFlags, aiParsingService);
   }
 
   /**

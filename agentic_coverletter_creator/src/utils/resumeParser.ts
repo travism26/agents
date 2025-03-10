@@ -2,6 +2,8 @@ import pdfParse from 'pdf-parse';
 import * as mammoth from 'mammoth';
 import { z } from 'zod';
 import logger from './logger';
+import { AIParsingService, ParsingResult } from '../services/AIParsingService';
+import { FeatureFlags } from '../config/featureFlags';
 
 /**
  * Schema for parsed resume data
@@ -40,6 +42,21 @@ export type Resume = z.infer<typeof ResumeSchema>;
  * ResumeParser class for extracting structured data from different resume formats
  */
 export class ResumeParser {
+  private featureFlags: FeatureFlags;
+  private aiParsingService?: AIParsingService;
+
+  /**
+   * Creates a new ResumeParser instance
+   * @param featureFlags Feature flags configuration
+   * @param aiParsingService Optional AI parsing service
+   */
+  constructor(featureFlags: FeatureFlags, aiParsingService?: AIParsingService) {
+    this.featureFlags = featureFlags;
+    if (featureFlags.useAIResumeParser) {
+      this.aiParsingService = aiParsingService;
+    }
+  }
+
   /**
    * Parse resume data from a PDF file
    *
@@ -49,7 +66,7 @@ export class ResumeParser {
   async parseFromPDF(buffer: Buffer): Promise<Resume> {
     try {
       const data = await pdfParse(buffer);
-      return this.extractResumeData(data.text);
+      return await this.extractResumeData(data.text);
     } catch (error) {
       logger.error('Error parsing PDF resume', { error });
       throw new Error('Failed to parse PDF resume');
@@ -65,7 +82,7 @@ export class ResumeParser {
   async parseFromDOCX(buffer: Buffer): Promise<Resume> {
     try {
       const result = await mammoth.extractRawText({ buffer });
-      return this.extractResumeData(result.value);
+      return await this.extractResumeData(result.value);
     } catch (error) {
       logger.error('Error parsing DOCX resume', { error });
       throw new Error('Failed to parse DOCX resume');
@@ -93,17 +110,33 @@ export class ResumeParser {
    *
    * @param text - Raw text from resume
    * @returns Structured resume data
-   *
-   * Note: In a production implementation, this would use more sophisticated
-   * parsing techniques, potentially leveraging NLP or LLMs to extract
-   * structured data from text. This is a simplified placeholder.
    */
-  private extractResumeData(text: string): Resume {
-    // This is a simplified placeholder implementation
-    // In a real implementation, we would use more sophisticated parsing
-    // potentially leveraging LLMs to extract structured data from text
+  private async extractResumeData(text: string): Promise<Resume> {
+    if (this.featureFlags.useAIResumeParser && this.aiParsingService) {
+      try {
+        logger.info('Using AI-powered resume parsing');
+        return await this.extractResumeDataAI(text);
+      } catch (error) {
+        logger.error('AI parsing failed, falling back to legacy parser', {
+          error,
+        });
+        return this.extractResumeDataLegacy(text);
+      }
+    }
 
-    logger.info('Extracting resume data from text', {
+    logger.info('Using legacy resume parsing');
+    return this.extractResumeDataLegacy(text);
+  }
+
+  /**
+   * Extract structured resume data from text using legacy parsing
+   *
+   * @param text - Raw text from resume
+   * @returns Structured resume data
+   */
+  private extractResumeDataLegacy(text: string): Resume {
+    // This is a simplified placeholder implementation
+    logger.info('Extracting resume data using legacy parser', {
       textLength: text.length,
     });
 
@@ -128,5 +161,35 @@ export class ResumeParser {
       ],
       skills: ['Extracted Skill 1', 'Extracted Skill 2'],
     };
+  }
+
+  /**
+   * Extract structured resume data from text using AI
+   *
+   * @param text - Raw text from resume
+   * @returns Structured resume data
+   * @throws Error if AI parsing fails
+   */
+  private async extractResumeDataAI(text: string): Promise<Resume> {
+    if (!this.aiParsingService) {
+      throw new Error('AI parsing service not available');
+    }
+
+    const result: ParsingResult = await this.aiParsingService.parseResume(text);
+
+    if (!result.data) {
+      logger.warn('AI parsing returned no data', {
+        errors: result.errors,
+        warnings: result.warnings,
+      });
+      throw new Error('AI parsing failed to extract resume data');
+    }
+
+    logger.info('AI parsing successful', {
+      confidence: result.confidence.overall,
+      warnings: result.warnings.length,
+    });
+
+    return result.data;
   }
 }
