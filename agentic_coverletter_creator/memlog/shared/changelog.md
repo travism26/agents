@@ -9,6 +9,28 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 - Evaluator Agent API (in progress)
 - Integration with Orchestrator (planned)
 
+## [0.8.3] - 2025-03-10
+
+### Fixed
+
+- Fixed Perplexity API integration error (404 status code)
+- Updated PerplexityClient to use the correct '/chat/completions' endpoint instead of '/query'
+- Updated request body format to match the latest Perplexity API requirements
+- Implemented proper response parsing for the new API format
+- Added URL extraction from API responses to capture referenced sources
+- Improved error handling for API responses
+
+## [0.8.2] - 2025-03-10
+
+### Fixed
+
+- Enhanced DOCX file support in Cover Letter Generator
+- Improved file format detection for DOCX files in coverLetterController
+- Added support for alternative DOCX MIME types (application/msword, application/vnd.ms-word.document.macroEnabled.12)
+- Implemented fallback detection for DOCX files with incorrect MIME types
+- Added detailed logging for file upload processing to aid debugging
+- Improved error messages for unsupported file formats
+
 ## [0.8.1] - 2025-03-05
 
 ### Changed

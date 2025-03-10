@@ -78,6 +78,25 @@ Status: Pending
 
 ## Recent Updates (Last 2 weeks)
 
+[2025-03-10 05:19:00]
+
+- Fixed Perplexity API integration error (404 status code)
+- Updated PerplexityClient to use the correct '/chat/completions' endpoint instead of '/query'
+- Updated request body format to match the latest Perplexity API requirements
+- Implemented proper response parsing for the new API format
+- Added URL extraction from API responses to capture referenced sources
+- Improved error handling for API responses
+
+[2025-03-10 05:15:00]
+
+- Enhanced DOCX file support in Cover Letter Generator
+- Improved file format detection for DOCX files in coverLetterController
+- Added support for alternative DOCX MIME types (application/msword, application/vnd.ms-word.document.macroEnabled.12)
+- Implemented fallback detection for DOCX files with incorrect MIME types
+- Added detailed logging for file upload processing to aid debugging
+- Improved error messages for unsupported file formats
+- Fixed issue with DOCX resume uploads in the API endpoint
+
 [2025-03-05 06:38:00]
 
 - Completed Orchestrator Implementation
