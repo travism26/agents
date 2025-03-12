@@ -12,6 +12,7 @@ All notable changes to the Cover Letter Generation Agent project will be documen
   - Support for generating two different cover letters with different approaches
   - Custom template support for using previously successful cover letters
   - Different cover letter approaches (Achievement-focused, Company culture match, Skills highlight)
+  - Requirements-Qualifications Table approach with three-part structure (intro, table, closing)
   - Feature flag for enabling/disabling multiple cover letter generation
 
 ## [0.8.4] - 2025-03-10

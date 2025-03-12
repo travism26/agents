@@ -32,7 +32,8 @@ Status: Pending
   - [ ] 2.2.2 Implement `createAchievementFocusedPrompt` method
   - [ ] 2.2.3 Implement `createCompanyCultureMatchPrompt` method
   - [ ] 2.2.4 Implement `createSkillsHighlightPrompt` method
-  - [ ] 2.2.5 Implement `createCustomTemplatePrompt` method
+  - [ ] 2.2.5 Implement `createRequirementsTablePrompt` method
+  - [ ] 2.2.6 Implement `createCustomTemplatePrompt` method
 - [ ] 2.3 Add parallel processing support for generating multiple cover letters
 - [ ] 2.4 Implement error handling for multiple generation
 - [ ] 2.5 Update token usage tracking to account for multiple generations
@@ -99,6 +100,7 @@ export enum CoverLetterApproach {
   ACHIEVEMENT_FOCUSED = 'ACHIEVEMENT_FOCUSED',
   COMPANY_CULTURE_MATCH = 'COMPANY_CULTURE_MATCH',
   SKILLS_HIGHLIGHT = 'SKILLS_HIGHLIGHT',
+  REQUIREMENTS_TABLE = 'REQUIREMENTS_TABLE', // Template with requirements-qualifications table
   CUSTOM_TEMPLATE = 'CUSTOM_TEMPLATE', // For user's successful template
 }
 ```
@@ -115,6 +117,35 @@ export interface MultiCoverLetterOptions extends CoverLetterOptions {
 }
 ```
 
+### Requirements Table Approach
+
+The REQUIREMENTS_TABLE approach creates a cover letter with a three-part structure:
+
+1. **Introduction**: A brief introduction expressing interest in the position and highlighting key personal traits
+2. **Requirements-Qualifications Table**: A two-column table that maps job requirements to the candidate's qualifications
+3. **Closing**: A paragraph that sells why the candidate is a good fit, addressing any potential gaps and highlighting continuous learning
+
+Example structure:
+
+```
+Dear Hiring Manager,
+
+[Introduction paragraph with position interest and personal traits]
+
+Your Requirements | My Qualifications
+------------------|------------------
+[Requirement 1]   | [Qualification 1]
+[Requirement 2]   | [Qualification 2]
+...               | ...
+
+[Closing paragraph emphasizing fit and addressing any gaps]
+
+Sincerely,
+[Candidate Name]
+```
+
+This approach is particularly effective for technical positions as it clearly demonstrates how the candidate meets each specific job requirement.
+
 ### API Request Example
 
 ```json
@@ -124,7 +155,7 @@ export interface MultiCoverLetterOptions extends CoverLetterOptions {
   "jobDescription": "We are looking for a senior developer...",
   "tonePreference": "PROFESSIONAL",
   "generateMultiple": true,
-  "approaches": ["CUSTOM_TEMPLATE", "ACHIEVEMENT_FOCUSED"],
+  "approaches": ["REQUIREMENTS_TABLE", "ACHIEVEMENT_FOCUSED"],
   "customTemplate": "Dear Hiring Manager,\n\nI am writing to express my interest in...",
   "resume": { ... }
 }
@@ -139,7 +170,7 @@ export interface MultiCoverLetterOptions extends CoverLetterOptions {
     "coverLetters": [
       {
         "coverLetter": "...",
-        "approach": "CUSTOM_TEMPLATE",
+        "approach": "REQUIREMENTS_TABLE",
         "metadata": { ... }
       },
       {
