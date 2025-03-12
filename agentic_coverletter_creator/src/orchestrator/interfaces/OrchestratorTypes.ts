@@ -4,7 +4,10 @@
 
 import { Resume } from '../../utils/resumeParser';
 import { CompanyResearchResult } from '../../agents/research/ResearchAgent';
-import { CoverLetterTone } from '../../agents/writer/WriterAgent';
+import {
+  CoverLetterTone,
+  CoverLetterApproach,
+} from '../../agents/writer/WriterAgent';
 
 /**
  * Input parameters for the cover letter generation process
@@ -24,6 +27,18 @@ export interface CoverLetterRequest {
 
   /** Optional preference for the tone of the cover letter */
   tonePreference?: CoverLetterTone;
+
+  /** Optional approach for the cover letter */
+  approach?: CoverLetterApproach;
+
+  /** Optional flag to generate multiple cover letters */
+  generateMultiple?: boolean;
+
+  /** Optional approaches for multiple cover letter generation */
+  approaches?: CoverLetterApproach[];
+
+  /** Optional custom template for cover letter generation */
+  customTemplate?: string;
 }
 
 /**
@@ -58,6 +73,20 @@ export interface CoverLetterResult {
 
   /** Number of iterations performed to reach the final result */
   iterations: number;
+
+  /** The approach used for this cover letter */
+  approach?: CoverLetterApproach;
+}
+
+/**
+ * Final result of multiple cover letter generation process
+ */
+export interface MultiCoverLetterResult {
+  /** Array of generated cover letters */
+  coverLetters: CoverLetterResult[];
+
+  /** Research data about the company (shared across all cover letters) */
+  companyResearch: CompanyResearchResult;
 }
 
 /**
@@ -89,8 +118,20 @@ export interface OrchestratorState {
   /** Current draft of the cover letter (if available) */
   currentDraft?: string;
 
+  /** Current drafts for multiple cover letter generation (if available) */
+  currentDrafts?: {
+    coverLetter: string;
+    approach: CoverLetterApproach | string;
+  }[];
+
   /** Current evaluation results (if available) */
   currentEvaluation?: EvaluationResult;
+
+  /** Current evaluation results for multiple cover letters (if available) */
+  currentEvaluations?: {
+    approach: CoverLetterApproach | string;
+    evaluation: EvaluationResult;
+  }[];
 
   /** Number of iterations performed */
   iterations: number;
@@ -106,6 +147,9 @@ export interface OrchestratorState {
 
   /** Timestamp when the process completed or failed */
   endTime?: number;
+
+  /** Flag indicating if this is a multiple cover letter generation */
+  isMultipleGeneration?: boolean;
 }
 
 /**
@@ -143,4 +187,13 @@ export interface OrchestratorOptions {
 
   /** Callback for progress updates */
   onProgress?: (update: ProgressUpdate) => void;
+
+  /** Whether to generate multiple cover letters */
+  generateMultiple?: boolean;
+
+  /** Approaches to use for multiple cover letter generation */
+  approaches?: CoverLetterApproach[];
+
+  /** Custom template for cover letter generation */
+  customTemplate?: string;
 }

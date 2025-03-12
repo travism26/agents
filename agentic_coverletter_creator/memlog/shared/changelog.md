@@ -8,12 +8,24 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 
 - Evaluator Agent API (in progress)
 - Integration with Orchestrator (planned)
-- Multiple Cover Letter Generation feature (planned)
-  - Support for generating two different cover letters with different approaches
+- Multiple Cover Letter Generation feature (in progress)
+  - Support for generating multiple cover letters with different approaches
   - Custom template support for using previously successful cover letters
   - Different cover letter approaches (Achievement-focused, Company culture match, Skills highlight)
   - Requirements-Qualifications Table approach with three-part structure (intro, table, closing)
   - Feature flag for enabling/disabling multiple cover letter generation
+  - Implemented core functionality:
+    - Added CoverLetterApproach enum with different approaches
+    - Created MultiCoverLetterOptions and MultiCoverLetterResult interfaces
+    - Implemented approach-specific prompt creation methods
+    - Added parallel processing for generating multiple cover letters
+    - Updated controller to handle multiple cover letter generation
+    - Added validation for custom template input
+    - Integrated with Orchestrator for multiple cover letter generation:
+      - Added generateMultipleCoverLetters method to Orchestrator
+      - Modified OrchestratorState to track multiple drafts
+      - Updated progress tracking for multiple cover letter generation
+      - Implemented parallel evaluation of multiple cover letters
 
 ## [0.8.4] - 2025-03-10
 

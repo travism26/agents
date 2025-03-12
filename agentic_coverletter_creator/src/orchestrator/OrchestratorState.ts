@@ -8,6 +8,7 @@ import {
   CoverLetterRequest,
   ProgressUpdate,
 } from './interfaces/OrchestratorTypes';
+import { CoverLetterApproach } from '../agents/writer/WriterAgent';
 
 /**
  * Manages the state of the orchestration process
@@ -39,16 +40,25 @@ export class OrchestratorStateManager {
   /**
    * Initializes the state with a new request
    * @param request The cover letter request
+   * @param isMultipleGeneration Whether this is a multiple cover letter generation
    */
-  public initializeState(request: CoverLetterRequest): void {
+  public initializeState(
+    request: CoverLetterRequest,
+    isMultipleGeneration: boolean = false
+  ): void {
     this.state = {
       status: OrchestratorStatus.IDLE,
       request,
       iterations: 0,
       maxIterations: this.state.maxIterations,
       startTime: Date.now(),
+      isMultipleGeneration,
     };
-    this.emitProgressUpdate('Initializing cover letter generation process');
+
+    const processType = isMultipleGeneration
+      ? 'multiple cover letter'
+      : 'cover letter';
+    this.emitProgressUpdate(`Initializing ${processType} generation process`);
   }
 
   /**
@@ -70,10 +80,16 @@ export class OrchestratorStateManager {
 
   /**
    * Updates the state to indicate writing is in progress
+   * @param count Optional number of cover letters being generated
    */
-  public startWriting(): void {
+  public startWriting(count: number = 1): void {
     this.state.status = OrchestratorStatus.WRITING;
-    this.emitProgressUpdate('Generating cover letter draft');
+
+    if (this.state.isMultipleGeneration) {
+      this.emitProgressUpdate(`Generating ${count} cover letter drafts`);
+    } else {
+      this.emitProgressUpdate('Generating cover letter draft');
+    }
   }
 
   /**
@@ -86,11 +102,28 @@ export class OrchestratorStateManager {
   }
 
   /**
-   * Updates the state to indicate evaluation is in progress
+   * Updates the state with multiple generated cover letter drafts
+   * @param drafts The generated cover letter drafts with their approaches
    */
-  public startEvaluation(): void {
+  public completeMultipleDrafts(
+    drafts: { coverLetter: string; approach: CoverLetterApproach | string }[]
+  ): void {
+    this.state.currentDrafts = drafts;
+    this.emitProgressUpdate(`${drafts.length} cover letter drafts completed`);
+  }
+
+  /**
+   * Updates the state to indicate evaluation is in progress
+   * @param count Optional number of cover letters being evaluated
+   */
+  public startEvaluation(count: number = 1): void {
     this.state.status = OrchestratorStatus.EVALUATING;
-    this.emitProgressUpdate('Evaluating cover letter quality');
+
+    if (this.state.isMultipleGeneration) {
+      this.emitProgressUpdate(`Evaluating ${count} cover letter drafts`);
+    } else {
+      this.emitProgressUpdate('Evaluating cover letter quality');
+    }
   }
 
   /**
@@ -100,6 +133,19 @@ export class OrchestratorStateManager {
   public completeEvaluation(evaluation: any): void {
     this.state.currentEvaluation = evaluation;
     this.emitProgressUpdate('Cover letter evaluation completed');
+  }
+
+  /**
+   * Updates the state with multiple evaluation results
+   * @param evaluations The evaluation results for multiple cover letters
+   */
+  public completeMultipleEvaluations(
+    evaluations: { approach: CoverLetterApproach | string; evaluation: any }[]
+  ): void {
+    this.state.currentEvaluations = evaluations;
+    this.emitProgressUpdate(
+      `${evaluations.length} cover letter evaluations completed`
+    );
   }
 
   /**

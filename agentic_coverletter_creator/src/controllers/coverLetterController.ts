@@ -2,7 +2,13 @@ import { Request, Response } from 'express';
 import { ResumeParser } from '../utils/resumeParser';
 import { InputSanitizer } from '../utils/inputSanitizer';
 import logger from '../utils/logger';
-import { WriterAgent, CoverLetterTone } from '../agents/writer/WriterAgent';
+import {
+  WriterAgent,
+  CoverLetterTone,
+  CoverLetterApproach,
+  CoverLetterOptions,
+  MultiCoverLetterOptions,
+} from '../agents/writer/WriterAgent';
 import { ResearchAgent } from '../agents/research/ResearchAgent';
 import { z } from 'zod';
 import { getFeatureFlags } from '../config/featureFlags';
@@ -34,6 +40,31 @@ const coverLetterGenerationSchema = z.object({
       cacheResults: z.boolean().optional(),
       preferredLLMModel: z.string().optional(),
     })
+    .optional(),
+  // New fields for multiple cover letter generation
+  generateMultiple: z.boolean().optional(),
+  customTemplate: z.string().optional(),
+  approach: z
+    .enum([
+      CoverLetterApproach.STANDARD,
+      CoverLetterApproach.ACHIEVEMENT_FOCUSED,
+      CoverLetterApproach.COMPANY_CULTURE_MATCH,
+      CoverLetterApproach.SKILLS_HIGHLIGHT,
+      CoverLetterApproach.REQUIREMENTS_TABLE,
+      CoverLetterApproach.CUSTOM_TEMPLATE,
+    ])
+    .optional(),
+  approaches: z
+    .array(
+      z.enum([
+        CoverLetterApproach.STANDARD,
+        CoverLetterApproach.ACHIEVEMENT_FOCUSED,
+        CoverLetterApproach.COMPANY_CULTURE_MATCH,
+        CoverLetterApproach.SKILLS_HIGHLIGHT,
+        CoverLetterApproach.REQUIREMENTS_TABLE,
+        CoverLetterApproach.CUSTOM_TEMPLATE,
+      ])
+    )
     .optional(),
 });
 
@@ -103,6 +134,10 @@ export class CoverLetterController {
         maxLength,
         customInstructions,
         options,
+        generateMultiple,
+        customTemplate,
+        approach,
+        approaches,
       } = validationResult.data;
 
       const sanitizedCompanyName =
@@ -217,31 +252,96 @@ export class CoverLetterController {
         }
       }
 
-      // Generate cover letter
-      const coverLetterResult = await this.writerAgent.generateCoverLetter({
-        candidateName: resume.personalInfo?.name || 'Candidate',
-        jobTitle: sanitizedJobTitle,
-        companyName: sanitizedCompanyName,
-        companyInfo: companyInfo,
-        companyValues: companyValues.join(', '),
-        jobDescription: sanitizedJobDescription,
-        candidateSkills: resume.skills?.join(', ') || '',
-        candidateExperience: this.formatExperience(resume.experience),
-        candidateEducation: this.formatEducation(resume.education),
-        tone: sanitizedTonePreference,
-        maxLength: maxLength,
-        customInstructions: customInstructions,
-      });
+      // Get feature flags
+      const featureFlags = getFeatureFlags();
 
-      // Return the generated cover letter
-      res.status(200).json({
-        success: true,
-        data: {
-          coverLetter: coverLetterResult.coverLetter,
-          metadata: coverLetterResult.metadata,
-          companyResearchUsed: !options?.skipResearch,
-        },
-      });
+      // Check if multiple cover letter generation is enabled and requested
+      if (generateMultiple && featureFlags.enableMultipleCoverLetters) {
+        // Validate approaches
+        if (!approaches || approaches.length === 0) {
+          res.status(400).json({
+            error: 'Bad Request',
+            message:
+              'At least one approach must be specified for multiple cover letter generation',
+          });
+          return;
+        }
+
+        // Create options for multiple cover letter generation
+        const multiOptions: MultiCoverLetterOptions = {
+          candidateName: resume.personalInfo?.name || 'Candidate',
+          jobTitle: sanitizedJobTitle,
+          companyName: sanitizedCompanyName,
+          companyInfo: companyInfo,
+          companyValues: companyValues.join(', '),
+          jobDescription: sanitizedJobDescription,
+          candidateSkills: resume.skills?.join(', ') || '',
+          candidateExperience: this.formatExperience(resume.experience),
+          candidateEducation: this.formatEducation(resume.education),
+          tone: sanitizedTonePreference,
+          maxLength: maxLength,
+          customInstructions: customInstructions,
+          variations: {
+            count: approaches.length,
+            approaches: approaches,
+          },
+          customTemplate: customTemplate,
+        };
+
+        // Generate multiple cover letters
+        const multiCoverLetterResult =
+          await this.writerAgent.generateMultipleCoverLetters(multiOptions);
+
+        // Return the generated cover letters
+        res.status(200).json({
+          success: true,
+          data: {
+            coverLetters: multiCoverLetterResult.coverLetters.map((result) => ({
+              coverLetter: result.coverLetter,
+              approach: result.approach,
+              metadata: result.metadata,
+            })),
+            metadata: multiCoverLetterResult.metadata,
+            companyResearchUsed: !options?.skipResearch,
+          },
+        });
+      } else {
+        // If multiple cover letter generation is not enabled or not requested,
+        // generate a single cover letter
+
+        // Create options for single cover letter generation
+        const singleOptions: CoverLetterOptions = {
+          candidateName: resume.personalInfo?.name || 'Candidate',
+          jobTitle: sanitizedJobTitle,
+          companyName: sanitizedCompanyName,
+          companyInfo: companyInfo,
+          companyValues: companyValues.join(', '),
+          jobDescription: sanitizedJobDescription,
+          candidateSkills: resume.skills?.join(', ') || '',
+          candidateExperience: this.formatExperience(resume.experience),
+          candidateEducation: this.formatEducation(resume.education),
+          tone: sanitizedTonePreference,
+          maxLength: maxLength,
+          customInstructions: customInstructions,
+          approach: approach, // Use the specified approach if provided
+        };
+
+        // Generate cover letter
+        const coverLetterResult = await this.writerAgent.generateCoverLetter(
+          singleOptions
+        );
+
+        // Return the generated cover letter
+        res.status(200).json({
+          success: true,
+          data: {
+            coverLetter: coverLetterResult.coverLetter,
+            approach: approach || CoverLetterApproach.STANDARD,
+            metadata: coverLetterResult.metadata,
+            companyResearchUsed: !options?.skipResearch,
+          },
+        });
+      }
     } catch (error) {
       logger.error('Error generating cover letter', {
         error: error instanceof Error ? error.message : String(error),
