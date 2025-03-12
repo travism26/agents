@@ -20,6 +20,12 @@ The system follows an orchestrator-workers pattern, where the orchestrator coord
 - **Quality Evaluation**: Automated review of cover letters for relevance, personalization, clarity, and impact
 - **Iterative Refinement**: Feedback loop for improving drafts that don't meet quality standards
 - **Multiple Tone Options**: Support for formal, conversational, enthusiastic, or balanced tones
+- **Multiple Cover Letter Approaches**: Generate multiple cover letters with different styles and approaches:
+  - **Achievement-Focused**: Emphasizes specific achievements and measurable results
+  - **Company Culture Match**: Highlights alignment with company values and culture
+  - **Skills Highlight**: Clearly maps candidate skills to job requirements
+  - **Requirements Table**: Uses a table format to match job requirements with qualifications
+  - **Custom Template**: Adapts a previously successful cover letter template to the current job
 
 ## Architecture
 
@@ -138,6 +144,83 @@ curl -X POST http://localhost:3000/api/generate-cover-letter \
   }'
 ```
 
+#### Generate Multiple Cover Letters
+
+To generate multiple cover letters with different approaches:
+
+```bash
+curl -X POST http://localhost:3000/api/generate-cover-letter \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resume": {
+      "personalInfo": {
+        "name": "John Doe",
+        "email": "john@example.com"
+      },
+      "experience": [
+        {
+          "title": "Software Engineer",
+          "company": "Tech Corp",
+          "description": "Developed web applications"
+        }
+      ],
+      "education": [
+        {
+          "degree": "Computer Science",
+          "institution": "University"
+        }
+      ],
+      "skills": ["JavaScript", "TypeScript"]
+    },
+    "companyName": "Example Inc",
+    "jobTitle": "Senior Developer",
+    "jobDescription": "We are looking for a senior developer with experience in TypeScript and Node.js.",
+    "tonePreference": "PROFESSIONAL",
+    "generateMultiple": true,
+    "approaches": ["REQUIREMENTS_TABLE", "ACHIEVEMENT_FOCUSED"]
+  }'
+```
+
+You can also use a custom template from a previously successful cover letter:
+
+```bash
+curl -X POST http://localhost:3000/api/generate-cover-letter \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resume": { ... },
+    "companyName": "Example Inc",
+    "jobTitle": "Senior Developer",
+    "jobDescription": "We are looking for a senior developer...",
+    "tonePreference": "PROFESSIONAL",
+    "generateMultiple": true,
+    "approaches": ["CUSTOM_TEMPLATE", "SKILLS_HIGHLIGHT"],
+    "customTemplate": "Dear Hiring Manager,\n\nI am writing to express my interest in the [Position] role at [Company]...\n\nSincerely,\n[Your Name]"
+  }'
+```
+
+The response will include multiple cover letters with their respective approaches:
+
+```json
+{
+  "success": true,
+  "data": {
+    "coverLetters": [
+      {
+        "coverLetter": "...",
+        "approach": "REQUIREMENTS_TABLE",
+        "metadata": { ... }
+      },
+      {
+        "coverLetter": "...",
+        "approach": "ACHIEVEMENT_FOCUSED",
+        "metadata": { ... }
+      }
+    ],
+    "companyResearchUsed": true
+  }
+}
+```
+
 You can also upload a resume file using multipart/form-data:
 
 ```bash
@@ -147,6 +230,35 @@ curl -X POST http://localhost:3000/api/generate-cover-letter \
   -F "jobTitle=Senior Developer" \
   -F "jobDescription=We are looking for a senior developer with experience in TypeScript and Node.js." \
   -F "tonePreference=conversational"
+```
+
+For generating multiple cover letters with a file upload:
+
+```bash
+curl -X POST http://localhost:3000/api/generate-cover-letter \
+  -F "resume=@/path/to/resume.pdf" \
+  -F "companyName=Example Inc" \
+  -F "jobTitle=Senior Developer" \
+  -F "jobDescription=We are looking for a senior developer with experience in TypeScript and Node.js." \
+  -F "tonePreference=PROFESSIONAL" \
+  -F "generateMultiple=true" \
+  -F "approaches[]=REQUIREMENTS_TABLE" \
+  -F "approaches[]=ACHIEVEMENT_FOCUSED"
+```
+
+To use a custom template with a file upload:
+
+```bash
+curl -X POST http://localhost:3000/api/generate-cover-letter \
+  -F "resume=@/path/to/resume.pdf" \
+  -F "companyName=Example Inc" \
+  -F "jobTitle=Senior Developer" \
+  -F "jobDescription=We are looking for a senior developer with experience in TypeScript and Node.js." \
+  -F "tonePreference=PROFESSIONAL" \
+  -F "generateMultiple=true" \
+  -F "approaches[]=CUSTOM_TEMPLATE" \
+  -F "approaches[]=SKILLS_HIGHLIGHT" \
+  -F "customTemplate=Dear Hiring Manager,\n\nI am writing to express my interest in the [Position] role at [Company]...\n\nSincerely,\n[Your Name]"
 ```
 
 ##### Example
@@ -177,7 +289,7 @@ Our stack is complex and we're looking for engineers who know how to write evolv
 ```
 
 ```json
-{"success":true,"data":{"coverLetter":"[Your Address]  \n[City, State, ZIP Code]  \n[Email Address]  \n[Phone Number]  \n\n[Date]  \n\nHiring Manager  \nZipRecruiter  \n[Company Address]  \n[City, State, ZIP Code]  \n\nDear Hiring Manager,\n\nI am writing to express my enthusiasm for the Software Engineer, Full Stack position at ZipRecruiter, as advertised. With a Bachelor of Computer Science from the University of New Brunswick and extensive experience in both frontend and backend development, I am excited about the opportunity to contribute to your innovative team that is dedicated to connecting people with their next great opportunity.\n\nThroughout my career, I have developed a strong proficiency in a variety of programming languages and technologies that align with ZipRecruiter's technical stack, including Java, Golang, JavaScript, Node.js, ReactJs, and Kubernetes. My experience at IBM Canada and POSTILIZE has equipped me with the skills to design and implement scalable user-facing applications that can seamlessly expand to accommodate a diverse user base. Additionally, my expertise in OpenShift, AWS, and Kafka has enabled me to build and maintain robust distributed systems, ensuring high performance and reliability.\n\nI am particularly drawn to ZipRecruiter’s commitment to innovation and the use of AI-driven smart matching technology to enhance user experiences. My experience with test-driven development and object-oriented design has cultivated a strong foundation for delivering efficient and evolvable code, which I am eager to apply in developing fast and intuitive mobile-first web applications at ZipRecruiter. I am especially impressed by your emphasis on diversity and inclusion, values that resonate with my own professional ethos and which I believe are critical to fostering a collaborative and innovative work environment.\n\nI am eager to bring my skills in full-stack development to ZipRecruiter and contribute to your mission of creating an efficient marketplace that serves millions of job seekers and employers. I would welcome the opportunity to discuss how my background, skills, and enthusiasms align with the goals of your team. Thank you for considering my application. I look forward to the possibility of discussing this exciting opportunity with you.\n\nSincerely,\n\nTravis Martin\n\n[Attachment: Resume]","metadata":{"model":"gpt-4o-2024-08-06","tokenUsage":{"promptTokens":1468,"completionTokens":428,"totalTokens":1896},"generationTime":9797},"companyResearchUsed":true}}%
+{"success":true,"data":{"coverLetter":"[Your Address]  \n[City, State, ZIP Code]  \n[Email Address]  \n[Phone Number]  \n\n[Date]  \n\nHiring Manager  \nZipRecruiter  \n[Company Address]  \n[City, State, ZIP Code]  \n\nDear Hiring Manager,\n\nI am writing to express my enthusiasm for the Software Engineer, Full Stack position at ZipRecruiter, as advertised. With a Bachelor of Computer Science from the University of New Brunswick and extensive experience in both frontend and backend development, I am excited about the opportunity to contribute to your innovative team that is dedicated to connecting people with their next great opportunity.\n\nThroughout my career, I have developed a strong proficiency in a variety of programming languages and technologies that align with ZipRecruiter's technical stack, including Java, Golang, JavaScript, Node.js, ReactJs, and Kubernetes. My experience at IBM Canada and POSTILIZE has equipped me with the skills to design and implement scalable user-facing applications that can seamlessly expand to accommodate a diverse user base. Additionally, my expertise in OpenShift, AWS, and Kafka has enabled me to build and maintain robust distributed systems, ensuring high performance and reliability.\n\nI am particularly drawn to ZipRecruiter's commitment to innovation and the use of AI-driven smart matching technology to enhance user experiences. My experience with test-driven development and object-oriented design has cultivated a strong foundation for delivering efficient and evolvable code, which I am eager to apply in developing fast and intuitive mobile-first web applications at ZipRecruiter. I am especially impressed by your emphasis on diversity and inclusion, values that resonate with my own professional ethos and which I believe are critical to fostering a collaborative and innovative work environment.\n\nI am eager to bring my skills in full-stack development to ZipRecruiter and contribute to your mission of creating an efficient marketplace that serves millions of job seekers and employers. I would welcome the opportunity to discuss how my background, skills, and enthusiasms align with the goals of your team. Thank you for considering my application. I look forward to the possibility of discussing this exciting opportunity with you.\n\nSincerely,\n\nTravis Martin\n\n[Attachment: Resume]","metadata":{"model":"gpt-4o-2024-08-06","tokenUsage":{"promptTokens":1468,"completionTokens":428,"totalTokens":1896},"generationTime":9797},"companyResearchUsed":true}}%
 ```
 
 ## Development

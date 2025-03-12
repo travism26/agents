@@ -42,7 +42,12 @@ const coverLetterGenerationSchema = z.object({
     })
     .optional(),
   // New fields for multiple cover letter generation
-  generateMultiple: z.boolean().optional(),
+  generateMultiple: z
+    .union([
+      z.boolean(),
+      z.string().transform((val) => val.toLowerCase() === 'true'),
+    ])
+    .optional(),
   customTemplate: z.string().optional(),
   approach: z
     .enum([

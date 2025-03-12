@@ -1,0 +1,65 @@
+{
+  "personalInfo": {
+    "name": "John Doe",
+    "email": "john.doe@example.com",
+    "phone": "555-123-4567",
+    "location": "San Francisco, CA",
+    "summary": "Experienced Java Developer with over 5 years of experience in developing enterprise applications using Java/J2EE, Spring MVC, and RESTful web services."
+  },
+  "skills": [
+    "Java",
+    "Spring MVC",
+    "RESTful APIs",
+    "SOAP Web Services",
+    "Microservices",
+    "Docker",
+    "Kubernetes",
+    "AWS",
+    "Git",
+    "Maven",
+    "JUnit",
+    "Agile/Scrum"
+  ],
+  "experience": [
+    {
+      "company": "Tech Solutions Inc.",
+      "position": "Senior Java Developer",
+      "startDate": "2022-01",
+      "endDate": "Present",
+      "description": "Developed and maintained enterprise applications using Java, Spring Boot, and RESTful web services. Implemented microservices architecture and containerized applications using Docker and Kubernetes."
+    },
+    {
+      "company": "Software Innovations LLC",
+      "position": "Java Developer",
+      "startDate": "2019-03",
+      "endDate": "2021-12",
+      "description": "Designed and implemented RESTful APIs for mobile applications. Worked with Spring MVC framework and integrated with third-party services. Participated in code reviews and mentored junior developers."
+    },
+    {
+      "company": "Digital Systems Corp",
+      "position": "Junior Java Developer",
+      "startDate": "2017-06",
+      "endDate": "2019-02",
+      "description": "Assisted in developing and testing Java applications. Worked with SOAP web services and implemented database operations using Hibernate ORM."
+    }
+  ],
+  "education": [
+    {
+      "institution": "University of California, Berkeley",
+      "degree": "Bachelor of Science in Computer Science",
+      "year": "2017"
+    }
+  ],
+  "certifications": [
+    {
+      "name": "Oracle Certified Professional, Java SE 11 Developer",
+      "issuer": "Oracle",
+      "year": "2020"
+    },
+    {
+      "name": "AWS Certified Developer - Associate",
+      "issuer": "Amazon Web Services",
+      "year": "2021"
+    }
+  ]
+}

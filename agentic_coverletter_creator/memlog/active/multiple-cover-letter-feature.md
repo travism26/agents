@@ -71,7 +71,7 @@ Status: Completed
 
 ### 6. Testing [Priority: High]
 
-Status: Pending
+Status: In Progress
 
 - [ ] 6.1 Write unit tests for new WriterAgent methods
 - [ ] 6.2 Create test cases for different cover letter approaches
@@ -79,16 +79,18 @@ Status: Pending
 - [ ] 6.4 Test custom template functionality
 - [ ] 6.5 Create test fixtures for multiple cover letter generation
 - [ ] 6.6 Update existing tests to accommodate new functionality
+- [x] 6.7 Fix generateMultiple parameter handling in form data requests (2025-03-12)
 
 ### 7. Documentation [Priority: Medium]
 
-Status: Pending
+Status: In Progress
 
 - [ ] 7.1 Update API documentation with new endpoints/parameters
 - [ ] 7.2 Document the different cover letter approaches
 - [ ] 7.3 Create examples of using the multiple cover letter feature
-- [ ] 7.4 Update README.md with new feature information
+- [x] 7.4 Update README.md with new feature information
 - [ ] 7.5 Document custom template format and requirements
+- [x] 7.6 Create form-data API usage guide (2025-03-12)
 
 ## Implementation Details
 

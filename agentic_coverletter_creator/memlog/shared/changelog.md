@@ -27,6 +27,12 @@ All notable changes to the Cover Letter Generation Agent project will be documen
       - Updated progress tracking for multiple cover letter generation
       - Implemented parallel evaluation of multiple cover letters
 
+### Fixed
+
+- Fixed form data handling for boolean parameters in the cover letter API
+  - Updated Zod schema to properly handle string boolean values ("true"/"false") in form data
+  - Improved type conversion for generateMultiple parameter
+
 ## [0.8.4] - 2025-03-10
 
 ### Added
