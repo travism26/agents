@@ -9,6 +9,25 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 - Evaluator Agent API (in progress)
 - Integration with Orchestrator (planned)
 
+## [0.8.4] - 2025-03-10
+
+### Added
+
+- AI-powered resume parsing with feature flag system
+- AIParsingService for extracting structured data from resumes using LLMs
+- Feature flag infrastructure for enabling/disabling AI parsing
+- Enhanced resume data schema to support more detailed information
+- Structured XML prompts for consistent LLM responses
+- Confidence scoring for parsed resume sections
+- Fallback mechanism to legacy parsing when AI parsing fails
+- Unit tests for AI parsing service
+
+### Changed
+
+- Updated ResumeParser to support both AI and legacy parsing methods
+- Modified CoverLetterController to initialize ResumeParser with feature flags
+- Updated environment configuration to include feature flags
+
 ## [0.8.3] - 2025-03-10
 
 ### Fixed

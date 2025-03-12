@@ -78,6 +78,20 @@ Status: Pending
 
 ## Recent Updates (Last 2 weeks)
 
+[2025-03-10 05:53:00]
+
+- Implemented AI-powered resume parsing with feature flag
+- Created AIParsingService for extracting structured data from resumes using LLMs
+- Implemented feature flag system to enable/disable AI parsing
+- Updated ResumeParser to use AI parsing when enabled with fallback to legacy parsing
+- Enhanced resume data schema to support more detailed information
+- Created structured XML prompts for consistent LLM responses
+- Added comprehensive error handling and validation
+- Implemented confidence scoring for parsed resume sections
+- Created unit tests for AI parsing service
+- Updated CoverLetterController to support AI parsing
+- Added feature flag to environment configuration
+
 [2025-03-10 05:19:00]
 
 - Fixed Perplexity API integration error (404 status code)
