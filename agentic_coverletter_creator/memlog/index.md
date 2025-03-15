@@ -1,6 +1,6 @@
 # Memlog System Index
 
-Last Updated: 2025-03-12 09:04:05 (America/Moncton, UTC-3:00)
+Last Updated: 2025-03-15 17:38:07 (America/Moncton, UTC-3:00)
 
 ## Active Projects
 
@@ -8,6 +8,7 @@ Last Updated: 2025-03-12 09:04:05 (America/Moncton, UTC-3:00)
 | -------------------------------------------------------------------------- | -------------- | ------------------------------------ | ----------- | -------------------------------------------------------------- |
 | [Cover Letter Generation Agent](./active/cover-letter-agent.md)            | Sprint 1       | Evaluator Agent - Quality Assessment | In Progress | [Detailed Blueprint](./active/cover-letter-agent-blueprint.md) |
 | [Multiple Cover Letter Feature](./active/multiple-cover-letter-feature.md) | Sprint 2       | Testing, Documentation               | In Progress | N/A                                                            |
+| [Interview Preparation Feature](./active/interview-prep-feature.md)        | Sprint 3       | Core Infrastructure, API Integration | In Progress | N/A                                                            |
 
 ## Recently Completed Tasks
 

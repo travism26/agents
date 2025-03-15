@@ -4,6 +4,7 @@ import multer from 'multer';
 import logger from './utils/logger';
 import { CoverLetterController } from './controllers/coverLetterController';
 import { ResearchController } from './controllers/researchController';
+import { InterviewController } from './controllers/interviewController';
 
 // Load environment variables
 dotenv.config();
@@ -27,6 +28,7 @@ const upload = multer({
 // Initialize controllers
 const coverLetterController = new CoverLetterController();
 const researchController = new ResearchController();
+const interviewController = new InterviewController();
 
 // Request logging middleware
 app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -57,6 +59,23 @@ app.post('/api/research/company', (req: Request, res: Response) =>
 
 app.post('/api/research/clear-cache', (req: Request, res: Response) =>
   researchController.clearCache(req, res)
+);
+
+// Interview preparation routes
+app.post('/api/interview-prep', (req: Request, res: Response) =>
+  interviewController.generateInterviewPrep(req, res)
+);
+
+app.post('/api/interview-prep/cache/clear', (req: Request, res: Response) =>
+  interviewController.clearCache(req, res)
+);
+
+// Cover letter API endpoint (for the test script)
+app.post(
+  '/api/cover-letter',
+  upload.single('resume'),
+  (req: Request, res: Response) =>
+    coverLetterController.generateCoverLetter(req, res)
 );
 
 // Health check endpoint

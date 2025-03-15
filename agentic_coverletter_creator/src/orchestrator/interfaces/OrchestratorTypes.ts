@@ -8,6 +8,10 @@ import {
   CoverLetterTone,
   CoverLetterApproach,
 } from '../../agents/writer/WriterAgent';
+import {
+  InterviewPrepOptions,
+  InterviewPrepResult,
+} from '../../agents/interview/interfaces/InterviewTypes';
 
 /**
  * Input parameters for the cover letter generation process
@@ -39,6 +43,12 @@ export interface CoverLetterRequest {
 
   /** Optional custom template for cover letter generation */
   customTemplate?: string;
+
+  /** Optional flag to include interview preparation materials */
+  includeInterviewPrep?: boolean;
+
+  /** Optional interview preparation options */
+  interviewPrepOptions?: InterviewPrepOptions;
 }
 
 /**
@@ -76,6 +86,9 @@ export interface CoverLetterResult {
 
   /** The approach used for this cover letter */
   approach?: CoverLetterApproach;
+
+  /** Optional interview preparation materials */
+  interviewPrep?: InterviewPrepResult;
 }
 
 /**
@@ -87,6 +100,9 @@ export interface MultiCoverLetterResult {
 
   /** Research data about the company (shared across all cover letters) */
   companyResearch: CompanyResearchResult;
+
+  /** Optional interview preparation materials */
+  interviewPrep?: InterviewPrepResult;
 }
 
 /**
@@ -133,6 +149,9 @@ export interface OrchestratorState {
     evaluation: EvaluationResult;
   }[];
 
+  /** Interview preparation results (if available) */
+  interviewPrep?: InterviewPrepResult;
+
   /** Number of iterations performed */
   iterations: number;
 
@@ -150,6 +169,9 @@ export interface OrchestratorState {
 
   /** Flag indicating if this is a multiple cover letter generation */
   isMultipleGeneration?: boolean;
+
+  /** Flag indicating if interview preparation is included */
+  includeInterviewPrep?: boolean;
 }
 
 /**
@@ -196,4 +218,10 @@ export interface OrchestratorOptions {
 
   /** Custom template for cover letter generation */
   customTemplate?: string;
+
+  /** Whether to include interview preparation materials */
+  includeInterviewPrep?: boolean;
+
+  /** Options for interview preparation */
+  interviewPrepOptions?: InterviewPrepOptions;
 }

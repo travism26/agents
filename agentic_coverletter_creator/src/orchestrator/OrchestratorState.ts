@@ -9,6 +9,7 @@ import {
   ProgressUpdate,
 } from './interfaces/OrchestratorTypes';
 import { CoverLetterApproach } from '../agents/writer/WriterAgent';
+import { InterviewPrepResult } from '../agents/interview/interfaces/InterviewTypes';
 
 /**
  * Manages the state of the orchestration process
@@ -53,6 +54,7 @@ export class OrchestratorStateManager {
       maxIterations: this.state.maxIterations,
       startTime: Date.now(),
       isMultipleGeneration,
+      includeInterviewPrep: request.includeInterviewPrep || false,
     };
 
     const processType = isMultipleGeneration
@@ -177,6 +179,25 @@ export class OrchestratorStateManager {
     this.state.error = error;
     this.state.endTime = Date.now();
     this.emitProgressUpdate(`Cover letter generation failed: ${error}`);
+  }
+
+  /**
+   * Updates the state with interview preparation results
+   * @param interviewPrep The interview preparation results
+   */
+  public setInterviewPrepResults(interviewPrep: InterviewPrepResult): void {
+    this.state.interviewPrep = interviewPrep;
+    this.emitProgressUpdate('Interview preparation materials generated');
+  }
+
+  /**
+   * Updates the state with a state modifier function
+   * @param modifier Function that takes the current state and returns a modified state
+   */
+  public updateState(
+    modifier: (state: OrchestratorState) => OrchestratorState
+  ): void {
+    this.state = modifier({ ...this.state });
   }
 
   /**

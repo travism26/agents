@@ -18,6 +18,8 @@ import {
   FeedbackIteration,
   FeedbackLoopResult,
 } from '../agents/evaluator/FeedbackLoop';
+import { InterviewPrepAgent } from '../agents/interview/InterviewPrepAgent';
+import { InterviewPrepResult } from '../agents/interview/interfaces/InterviewTypes';
 import { InputSanitizer } from '../utils/inputSanitizer';
 import { OrchestratorStateManager } from './OrchestratorState';
 import {
@@ -37,6 +39,7 @@ export class Orchestrator {
   private researchAgent: ResearchAgent;
   private writerAgent: WriterAgent;
   private evaluatorAgent: EvaluatorAgent;
+  private interviewPrepAgent?: InterviewPrepAgent;
   private feedbackLoop: FeedbackLoop;
   private stateManager: OrchestratorStateManager;
   private sanitizer: InputSanitizer;
@@ -73,7 +76,15 @@ export class Orchestrator {
       generateMultiple: options.generateMultiple ?? false,
       approaches: options.approaches ?? [],
       customTemplate: options.customTemplate ?? '',
+      includeInterviewPrep: options.includeInterviewPrep ?? false,
+      interviewPrepOptions: options.interviewPrepOptions ?? {},
     };
+
+    // Initialize InterviewPrepAgent if interview prep is enabled
+    if (this.options.includeInterviewPrep) {
+      this.interviewPrepAgent = InterviewPrepAgent.createDefault();
+      logger.info('InterviewPrepAgent initialized');
+    }
 
     // Initialize state manager
     this.stateManager = new OrchestratorStateManager(
@@ -208,12 +219,39 @@ export class Orchestrator {
         `Cover letter generation completed after ${feedbackResult.iterationCount} iterations`
       );
 
+      // Step 4: Generate interview prep materials if requested
+      let interviewPrep: InterviewPrepResult | undefined;
+      if (this.options.includeInterviewPrep && this.interviewPrepAgent) {
+        logger.info('Generating interview preparation materials');
+
+        try {
+          interviewPrep = await this.interviewPrepAgent.generateInterviewPrep(
+            companyResearch.companyName,
+            sanitizedJobDescription,
+            this.options.interviewPrepOptions
+          );
+
+          // Store interview prep results in state
+          this.stateManager.setInterviewPrepResults(interviewPrep);
+
+          logger.info('Interview preparation materials generated');
+        } catch (error) {
+          logger.error(
+            `Error generating interview prep: ${
+              error instanceof Error ? error.message : 'Unknown error'
+            }`
+          );
+          // Continue with the process even if interview prep fails
+        }
+      }
+
       // Return the final result
       return {
         coverLetter: feedbackResult.finalCoverLetter,
         companyResearch,
         evaluation: finalEvaluation,
         iterations: feedbackResult.iterationCount,
+        interviewPrep,
       };
     } catch (error: any) {
       // Handle errors
@@ -485,10 +523,37 @@ export class Orchestrator {
         })
       );
 
+      // Step 4: Generate interview prep materials if requested
+      let interviewPrep: InterviewPrepResult | undefined;
+      if (this.options.includeInterviewPrep && this.interviewPrepAgent) {
+        logger.info('Generating interview preparation materials');
+
+        try {
+          interviewPrep = await this.interviewPrepAgent.generateInterviewPrep(
+            companyResearch.companyName,
+            sanitizedJobDescription,
+            this.options.interviewPrepOptions
+          );
+
+          // Store interview prep results in state
+          this.stateManager.setInterviewPrepResults(interviewPrep);
+
+          logger.info('Interview preparation materials generated');
+        } catch (error) {
+          logger.error(
+            `Error generating interview prep: ${
+              error instanceof Error ? error.message : 'Unknown error'
+            }`
+          );
+          // Continue with the process even if interview prep fails
+        }
+      }
+
       // Return the final result
       return {
         coverLetters: coverLetterResults,
         companyResearch,
+        interviewPrep,
       };
     } catch (error: any) {
       // Handle errors

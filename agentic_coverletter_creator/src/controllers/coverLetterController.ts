@@ -10,10 +10,32 @@ import {
   MultiCoverLetterOptions,
 } from '../agents/writer/WriterAgent';
 import { ResearchAgent } from '../agents/research/ResearchAgent';
+import { EvaluatorAgent } from '../agents/evaluator/EvaluatorAgent';
+import { Orchestrator } from '../orchestrator/Orchestrator';
+import { InterviewPrepOptions } from '../agents/interview/interfaces/InterviewTypes';
 import { z } from 'zod';
-import { getFeatureFlags } from '../config/featureFlags';
+import {
+  getFeatureFlags,
+  defaultInterviewPrepOptions,
+} from '../config/featureFlags';
 import { AIParsingService } from '../services/AIParsingService';
 import { OpenAIClient } from '../agents/writer/clients/OpenAIClient';
+import { LLMClientFactory } from '../agents/writer/clients/LLMClientFactory';
+
+/**
+ * Validation schema for interview prep options
+ */
+const interviewPrepOptionsSchema = z.object({
+  questionCount: z.number().positive().optional(),
+  includeSuggestedAnswers: z.boolean().optional(),
+  difficultyLevel: z
+    .enum(['basic', 'intermediate', 'advanced', 'mixed'])
+    .optional(),
+  focusAreas: z
+    .array(z.enum(['technical', 'cultural', 'company-specific']))
+    .optional(),
+  forceRefresh: z.boolean().optional(),
+});
 
 /**
  * Validation schema for cover letter generation requests
@@ -71,6 +93,14 @@ const coverLetterGenerationSchema = z.object({
       ])
     )
     .optional(),
+  // New fields for interview preparation
+  includeInterviewPrep: z
+    .union([
+      z.boolean(),
+      z.string().transform((val) => val.toLowerCase() === 'true'),
+    ])
+    .optional(),
+  interviewPrepOptions: interviewPrepOptionsSchema.optional(),
 });
 
 /**
@@ -81,19 +111,39 @@ export class CoverLetterController {
   private inputSanitizer: InputSanitizer;
   private writerAgent: WriterAgent;
   private researchAgent: ResearchAgent;
+  private evaluatorAgent: EvaluatorAgent;
+  private orchestrator: Orchestrator;
+  private featureFlags: ReturnType<typeof getFeatureFlags>;
 
   constructor() {
     // Get feature flags
-    const featureFlags = getFeatureFlags();
+    this.featureFlags = getFeatureFlags();
 
     // Initialize services
     this.inputSanitizer = new InputSanitizer();
     this.writerAgent = new WriterAgent();
     this.researchAgent = new ResearchAgent();
 
+    // Get LLM client for evaluator
+    const llmClientFactory = LLMClientFactory.getInstance();
+    const llmClient = llmClientFactory.getClient('openai');
+
+    if (!llmClient) {
+      throw new Error('OpenAI client not available for EvaluatorAgent');
+    }
+
+    this.evaluatorAgent = new EvaluatorAgent({ llmClient });
+
+    // Initialize orchestrator
+    this.orchestrator = new Orchestrator(
+      this.researchAgent,
+      this.writerAgent,
+      this.evaluatorAgent
+    );
+
     // Initialize AI parsing service if feature flag is enabled
     let aiParsingService;
-    if (featureFlags.useAIResumeParser) {
+    if (this.featureFlags.useAIResumeParser) {
       // Use the same OpenAI client that the writer agent uses
       // In a production environment, you might want to inject this dependency
       const openAIApiKey = process.env.OPENAI_API_KEY || '';
@@ -107,7 +157,7 @@ export class CoverLetterController {
     }
 
     // Initialize resume parser with feature flags and AI parsing service
-    this.resumeParser = new ResumeParser(featureFlags, aiParsingService);
+    this.resumeParser = new ResumeParser(this.featureFlags, aiParsingService);
   }
 
   /**
@@ -143,6 +193,8 @@ export class CoverLetterController {
         customTemplate,
         approach,
         approaches,
+        includeInterviewPrep,
+        interviewPrepOptions,
       } = validationResult.data;
 
       const sanitizedCompanyName =
@@ -257,11 +309,8 @@ export class CoverLetterController {
         }
       }
 
-      // Get feature flags
-      const featureFlags = getFeatureFlags();
-
       // Check if multiple cover letter generation is enabled and requested
-      if (generateMultiple && featureFlags.enableMultipleCoverLetters) {
+      if (generateMultiple && this.featureFlags.enableMultipleCoverLetters) {
         // Validate approaches
         if (!approaches || approaches.length === 0) {
           res.status(400).json({
@@ -272,30 +321,38 @@ export class CoverLetterController {
           return;
         }
 
-        // Create options for multiple cover letter generation
-        const multiOptions: MultiCoverLetterOptions = {
-          candidateName: resume.personalInfo?.name || 'Candidate',
-          jobTitle: sanitizedJobTitle,
-          companyName: sanitizedCompanyName,
-          companyInfo: companyInfo,
-          companyValues: companyValues.join(', '),
-          jobDescription: sanitizedJobDescription,
-          candidateSkills: resume.skills?.join(', ') || '',
-          candidateExperience: this.formatExperience(resume.experience),
-          candidateEducation: this.formatEducation(resume.education),
-          tone: sanitizedTonePreference,
-          maxLength: maxLength,
-          customInstructions: customInstructions,
-          variations: {
-            count: approaches.length,
-            approaches: approaches,
-          },
+        // Configure orchestrator for multiple cover letter generation
+        const orchestratorOptions = {
+          generateMultiple: true,
+          approaches: approaches,
           customTemplate: customTemplate,
+          includeInterviewPrep:
+            includeInterviewPrep && this.featureFlags.enableInterviewPrep,
+          interviewPrepOptions:
+            includeInterviewPrep && this.featureFlags.enableInterviewPrep
+              ? { ...defaultInterviewPrepOptions, ...interviewPrepOptions }
+              : undefined,
         };
 
-        // Generate multiple cover letters
+        // Create request for orchestrator
+        const orchestratorRequest = {
+          resume,
+          companyName: sanitizedCompanyName,
+          jobTitle: sanitizedJobTitle,
+          jobDescription: sanitizedJobDescription,
+          tonePreference: sanitizedTonePreference,
+          approaches,
+          customTemplate,
+          includeInterviewPrep:
+            includeInterviewPrep && this.featureFlags.enableInterviewPrep,
+          interviewPrepOptions: interviewPrepOptions,
+        };
+
+        // Generate multiple cover letters using orchestrator
         const multiCoverLetterResult =
-          await this.writerAgent.generateMultipleCoverLetters(multiOptions);
+          await this.orchestrator.generateMultipleCoverLetters(
+            orchestratorRequest
+          );
 
         // Return the generated cover letters
         res.status(200).json({
@@ -304,36 +361,40 @@ export class CoverLetterController {
             coverLetters: multiCoverLetterResult.coverLetters.map((result) => ({
               coverLetter: result.coverLetter,
               approach: result.approach,
-              metadata: result.metadata,
+              evaluation: result.evaluation,
             })),
-            metadata: multiCoverLetterResult.metadata,
-            companyResearchUsed: !options?.skipResearch,
+            companyResearch: multiCoverLetterResult.companyResearch,
+            interviewPrep: multiCoverLetterResult.interviewPrep,
           },
         });
       } else {
-        // If multiple cover letter generation is not enabled or not requested,
-        // generate a single cover letter
-
-        // Create options for single cover letter generation
-        const singleOptions: CoverLetterOptions = {
-          candidateName: resume.personalInfo?.name || 'Candidate',
-          jobTitle: sanitizedJobTitle,
-          companyName: sanitizedCompanyName,
-          companyInfo: companyInfo,
-          companyValues: companyValues.join(', '),
-          jobDescription: sanitizedJobDescription,
-          candidateSkills: resume.skills?.join(', ') || '',
-          candidateExperience: this.formatExperience(resume.experience),
-          candidateEducation: this.formatEducation(resume.education),
-          tone: sanitizedTonePreference,
-          maxLength: maxLength,
-          customInstructions: customInstructions,
-          approach: approach, // Use the specified approach if provided
+        // Configure orchestrator for single cover letter generation
+        const orchestratorOptions = {
+          approach: approach,
+          includeInterviewPrep:
+            includeInterviewPrep && this.featureFlags.enableInterviewPrep,
+          interviewPrepOptions:
+            includeInterviewPrep && this.featureFlags.enableInterviewPrep
+              ? { ...defaultInterviewPrepOptions, ...interviewPrepOptions }
+              : undefined,
         };
 
-        // Generate cover letter
-        const coverLetterResult = await this.writerAgent.generateCoverLetter(
-          singleOptions
+        // Create request for orchestrator
+        const orchestratorRequest = {
+          resume,
+          companyName: sanitizedCompanyName,
+          jobTitle: sanitizedJobTitle,
+          jobDescription: sanitizedJobDescription,
+          tonePreference: sanitizedTonePreference,
+          approach,
+          includeInterviewPrep:
+            includeInterviewPrep && this.featureFlags.enableInterviewPrep,
+          interviewPrepOptions: interviewPrepOptions,
+        };
+
+        // Generate cover letter using orchestrator
+        const coverLetterResult = await this.orchestrator.generateCoverLetter(
+          orchestratorRequest
         );
 
         // Return the generated cover letter
@@ -341,9 +402,11 @@ export class CoverLetterController {
           success: true,
           data: {
             coverLetter: coverLetterResult.coverLetter,
-            approach: approach || CoverLetterApproach.STANDARD,
-            metadata: coverLetterResult.metadata,
-            companyResearchUsed: !options?.skipResearch,
+            approach:
+              coverLetterResult.approach || CoverLetterApproach.STANDARD,
+            evaluation: coverLetterResult.evaluation,
+            companyResearch: coverLetterResult.companyResearch,
+            interviewPrep: coverLetterResult.interviewPrep,
           },
         });
       }

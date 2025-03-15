@@ -6,6 +6,25 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 
 ### Added
 
+- Interview Preparation Feature (in progress)
+
+  - Company research and interview preparation capabilities
+  - Technical, cultural, and company-specific question generation
+  - Talking points for candidate questions
+  - Preparation checklist customized to the company/role
+  - Integration with existing ResearchAgent
+  - Caching system for interview preparation materials
+  - Standalone API endpoint and integration with cover letter flow
+  - Feature flag for enabling/disabling interview preparation
+  - Implemented core functionality:
+    - Created InterviewTypes.ts with Question, TalkingPoint, and ChecklistItem interfaces
+    - Implemented InterviewPrepCache for caching interview preparation results
+    - Developed InterviewPrepAgent for generating interview preparation materials
+    - Updated Orchestrator to integrate with InterviewPrepAgent
+    - Created InterviewController for standalone interview preparation endpoints
+    - Added feature flag for interview preparation feature
+    - Created documentation for interview preparation feature
+
 - Evaluator Agent API (in progress)
 - Integration with Orchestrator (planned)
 - Multiple Cover Letter Generation feature (in progress)
@@ -32,6 +51,8 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 - Fixed form data handling for boolean parameters in the cover letter API
   - Updated Zod schema to properly handle string boolean values ("true"/"false") in form data
   - Improved type conversion for generateMultiple parameter
+- Fixed missing LLMClientFactory import in coverLetterController.ts after adding interview prep feature
+- Added missing interview preparation routes to index.ts to enable API endpoints for the feature
 
 ## [0.8.4] - 2025-03-10
 
