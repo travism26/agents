@@ -24,6 +24,7 @@ All notable changes to the Cover Letter Generation Agent project will be documen
     - Created InterviewController for standalone interview preparation endpoints
     - Added feature flag for interview preparation feature
     - Created documentation for interview preparation feature
+    - Updated README.md with detailed examples of how to use the interview prep feature
 
 - Evaluator Agent API (in progress)
 - Integration with Orchestrator (planned)

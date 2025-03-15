@@ -565,3 +565,5 @@ Extend the cover letter generator to include company research and interview prep
 **2025-03-15 17:26:53**: Completed core infrastructure implementation (Phase 1), API and controller updates (Phase 2), feature flags and prompts (Phase 3.1, 3.3), and documentation (Phase 4.2)
 **2025-03-15 17:35:44**: Fixed missing LLMClientFactory import in coverLetterController.ts that was causing errors after adding interview prep feature
 **2025-03-15 17:37:43**: Added interview preparation routes to index.ts to enable API endpoints for the feature
+**2025-03-15 17:48:00**: Updated README.md with detailed examples of how to use the interview prep feature, both as a standalone service and integrated with cover letter generation
+**2025-03-15 17:52:27**: Enhanced README.md with comprehensive examples for the interview prep feature, including basic, intermediate, and advanced usage scenarios with all available options
