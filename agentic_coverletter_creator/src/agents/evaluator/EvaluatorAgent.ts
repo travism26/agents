@@ -277,7 +277,7 @@ export class EvaluatorAgent {
   <Purpose>Analyze cover letter for grammar, spelling, and punctuation errors</Purpose>
   <CoverLetter>${coverLetter}</CoverLetter>
   <ReturnStructure>
-Return json output like below:
+Return ONLY raw JSON without any markdown formatting, code blocks, or backticks. The response must be valid JSON that can be directly parsed:
 {
   "score": <number between 0-100 representing grammar quality>,
   "errors": [
@@ -340,7 +340,7 @@ Return json output like below:
   </Considerations>
   <CoverLetter>${coverLetter}</CoverLetter>
   <ReturnStructure>
-Return json output like below:
+Return ONLY raw JSON without any markdown formatting, code blocks, or backticks. The response must be valid JSON that can be directly parsed:
 {
   "score": <number between 0-100 representing style quality>,
   "issues": [
@@ -408,7 +408,7 @@ Return json output like below:
     <CandidateExperience>${options.candidateExperience}</CandidateExperience>
   </JobDetails>
   <ReturnStructure>
-Return json output like below:
+Return ONLY raw JSON without any markdown formatting, code blocks, or backticks. The response must be valid JSON that can be directly parsed:
 {
   "score": <number between 0-100 representing relevance>,
   "strengths": ["<strength 1>", "<strength 2>", ...],
@@ -480,7 +480,7 @@ Return json output like below:
     <Company>${options.companyName}</Company>
   </JobDetails>
   <ReturnStructure>
-Return json output like below:
+Return ONLY raw JSON without any markdown formatting, code blocks, or backticks. The response must be valid JSON that can be directly parsed:
 {
   "score": <number between 0-100 representing completeness>,
   "missingComponents": ["<missing component 1>", "<missing component 2>", ...],
