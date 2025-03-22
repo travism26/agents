@@ -143,7 +143,7 @@ export class AIParsingService {
   </ParsingInstructions>
 
   <ReturnStructure>
-    Return a JSON object with the following structure:
+    Return ONLY raw JSON without any markdown formatting, code blocks, or backticks. The response must be valid JSON that can be directly parsed with the following structure:
     {
       "personalInfo": {
         "name": string,
