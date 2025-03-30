@@ -49,6 +49,18 @@ All notable changes to the Cover Letter Generation Agent project will be documen
 
 ### Fixed
 
+- Fixed JSON parsing errors in evaluation steps
+  - Added robust JSON parsing with markdown code block handling
+  - Implemented safeJsonParse utility function in EvaluatorAgent and AIParsingService
+  - Updated OpenAIClient to properly handle responseFormat parameter
+  - Added explicit JSON response format to all LLM requests that expect JSON
+  - Enhanced error handling for JSON parsing failures
+  - Improved resilience when LLM returns markdown-formatted JSON
+  - Fixed "Unexpected token '`'" errors in evaluation steps
+  - Added detailed logging for each JSON parsing attempt stage
+  - Enhanced prompts with explicit examples of correct vs. incorrect JSON formatting
+  - Added stronger warnings in prompts against using markdown code blocks
+  - Improved error recovery with better fallback handling
 - Fixed form data handling for boolean parameters in the cover letter API
   - Updated Zod schema to properly handle string boolean values ("true"/"false") in form data
   - Improved type conversion for generateMultiple parameter

@@ -7,6 +7,76 @@ import { Resume, ResumeSchema } from '../utils/resumeParser';
 import { z } from 'zod';
 
 /**
+ * Safely parses JSON from a string, handling markdown code blocks
+ * @param text The text to parse
+ * @returns The parsed JSON object
+ * @throws Error if the text cannot be parsed as JSON
+ */
+function safeJsonParse(text: string): any {
+  // Log the raw text for debugging
+  logger.debug('Attempting to parse JSON', {
+    textLength: text.length,
+    textPreview: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+  });
+
+  try {
+    // First try direct parsing
+    logger.debug('Attempting direct JSON parsing');
+    const directResult = JSON.parse(text);
+    logger.debug('Direct JSON parsing successful');
+    return directResult;
+  } catch (error) {
+    logger.debug('Direct JSON parsing failed', { error: String(error) });
+
+    // If direct parsing fails, try to extract JSON from markdown code blocks
+    logger.debug('Checking for markdown code blocks');
+    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch && jsonMatch[1]) {
+      try {
+        logger.debug('Found markdown code block, attempting to parse content');
+        const markdownResult = JSON.parse(jsonMatch[1]);
+        logger.debug('Markdown JSON parsing successful');
+        return markdownResult;
+      } catch (innerError) {
+        logger.debug('Markdown JSON parsing failed', {
+          error: String(innerError),
+        });
+        throw new Error(`Failed to parse JSON from markdown: ${innerError}`);
+      }
+    } else {
+      logger.debug('No markdown code blocks found');
+    }
+
+    // If no code blocks, try to find anything that looks like JSON
+    logger.debug('Searching for JSON-like patterns');
+    const possibleJson = text.match(/\{[\s\S]*\}/);
+    if (possibleJson) {
+      try {
+        logger.debug('Found JSON-like pattern, attempting to parse');
+        const patternResult = JSON.parse(possibleJson[0]);
+        logger.debug('Pattern JSON parsing successful');
+        return patternResult;
+      } catch (innerError) {
+        logger.debug('Pattern JSON parsing failed', {
+          error: String(innerError),
+        });
+        throw new Error(`Failed to parse JSON object: ${innerError}`);
+      }
+    } else {
+      logger.debug('No JSON-like patterns found');
+    }
+
+    // Log the full text on complete failure for debugging
+    logger.error('All JSON parsing attempts failed', {
+      fullText: text,
+      error: String(error),
+    });
+
+    throw new Error(`Invalid JSON format: ${error}`);
+  }
+}
+
+/**
  * Result of parsing a resume with AI
  */
 export interface ParsingResult {
@@ -72,17 +142,13 @@ export class AIParsingService {
         systemPrompt:
           'You are an expert resume parser that extracts structured information from resumes.',
         maxTokens: 2500, // Ensure enough tokens for complete resume parsing
+        responseFormat: { type: 'json_object' }, // Request JSON format
       };
 
       const response = await this.llmClient.generate(prompt, options);
 
-      // Extract JSON from response
-      const jsonMatch = response.text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('Failed to extract JSON from LLM response');
-      }
-
-      const parsedData = JSON.parse(jsonMatch[0]);
+      // Parse JSON from response
+      const parsedData = safeJsonParse(response.text);
       const validationResult = this.validateResponse(parsedData);
 
       success = true;
@@ -143,7 +209,19 @@ export class AIParsingService {
   </ParsingInstructions>
 
   <ReturnStructure>
-    Return ONLY raw JSON without any markdown formatting, code blocks, or backticks. The response must be valid JSON that can be directly parsed with the following structure:
+    CRITICAL: You must return ONLY raw JSON without ANY markdown formatting, code blocks, or backticks.
+    DO NOT wrap the response in \`\`\`json or any other markdown.
+    The response must be valid JSON that can be directly parsed by JSON.parse().
+
+    Example of CORRECT format:
+    {"personalInfo":{"name":"John Doe"},"experience":[]}
+
+    Example of INCORRECT format:
+    \`\`\`json
+    {"personalInfo":{"name":"John Doe"},"experience":[]}
+    \`\`\`
+
+    Your response must follow this structure:
     {
       "personalInfo": {
         "name": string,
