@@ -133,7 +133,7 @@ export class OpenAIClient extends BaseLLMClient {
       content: prompt,
     });
 
-    return {
+    const requestBody: any = {
       model,
       messages,
       temperature:
@@ -144,6 +144,13 @@ export class OpenAIClient extends BaseLLMClient {
       presence_penalty: options.presencePenalty || 0,
       stop: options.stop || null,
     };
+
+    // Add response_format if specified
+    if (options.responseFormat) {
+      requestBody.response_format = options.responseFormat;
+    }
+
+    return requestBody;
   }
 
   /**

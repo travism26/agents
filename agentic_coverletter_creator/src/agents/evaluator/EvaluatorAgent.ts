@@ -13,6 +13,76 @@ import {
 } from '../writer/interfaces/LLMClient';
 
 /**
+ * Safely parses JSON from a string, handling markdown code blocks
+ * @param text The text to parse
+ * @returns The parsed JSON object
+ * @throws Error if the text cannot be parsed as JSON
+ */
+function safeJsonParse(text: string): any {
+  // Log the raw text for debugging
+  logger.debug('Attempting to parse JSON', {
+    textLength: text.length,
+    textPreview: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+  });
+
+  try {
+    // First try direct parsing
+    logger.debug('Attempting direct JSON parsing');
+    const directResult = JSON.parse(text);
+    logger.debug('Direct JSON parsing successful');
+    return directResult;
+  } catch (error) {
+    logger.debug('Direct JSON parsing failed', { error: String(error) });
+
+    // If direct parsing fails, try to extract JSON from markdown code blocks
+    logger.debug('Checking for markdown code blocks');
+    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch && jsonMatch[1]) {
+      try {
+        logger.debug('Found markdown code block, attempting to parse content');
+        const markdownResult = JSON.parse(jsonMatch[1]);
+        logger.debug('Markdown JSON parsing successful');
+        return markdownResult;
+      } catch (innerError) {
+        logger.debug('Markdown JSON parsing failed', {
+          error: String(innerError),
+        });
+        throw new Error(`Failed to parse JSON from markdown: ${innerError}`);
+      }
+    } else {
+      logger.debug('No markdown code blocks found');
+    }
+
+    // If no code blocks, try to find anything that looks like JSON
+    logger.debug('Searching for JSON-like patterns');
+    const possibleJson = text.match(/\{[\s\S]*\}/);
+    if (possibleJson) {
+      try {
+        logger.debug('Found JSON-like pattern, attempting to parse');
+        const patternResult = JSON.parse(possibleJson[0]);
+        logger.debug('Pattern JSON parsing successful');
+        return patternResult;
+      } catch (innerError) {
+        logger.debug('Pattern JSON parsing failed', {
+          error: String(innerError),
+        });
+        throw new Error(`Failed to parse JSON object: ${innerError}`);
+      }
+    } else {
+      logger.debug('No JSON-like patterns found');
+    }
+
+    // Log the full text on complete failure for debugging
+    logger.error('All JSON parsing attempts failed', {
+      fullText: text,
+      error: String(error),
+    });
+
+    throw new Error(`Invalid JSON format: ${error}`);
+  }
+}
+
+/**
  * Options for the EvaluatorAgent
  */
 export interface EvaluatorAgentOptions {
@@ -277,7 +347,19 @@ export class EvaluatorAgent {
   <Purpose>Analyze cover letter for grammar, spelling, and punctuation errors</Purpose>
   <CoverLetter>${coverLetter}</CoverLetter>
   <ReturnStructure>
-Return ONLY raw JSON without any markdown formatting, code blocks, or backticks. The response must be valid JSON that can be directly parsed:
+CRITICAL: You must return ONLY raw JSON without ANY markdown formatting, code blocks, or backticks.
+DO NOT wrap the response in \`\`\`json or any other markdown.
+The response must be valid JSON that can be directly parsed by JSON.parse().
+
+Example of CORRECT format:
+{"score": 85, "errors": [], "feedback": "Good grammar overall."}
+
+Example of INCORRECT format:
+\`\`\`json
+{"score": 85, "errors": [], "feedback": "Good grammar overall."}
+\`\`\`
+
+Your response must follow this structure:
 {
   "score": <number between 0-100 representing grammar quality>,
   "errors": [
@@ -299,7 +381,7 @@ Return ONLY raw JSON without any markdown formatting, code blocks, or backticks.
       });
 
       // Parse the response
-      const result = JSON.parse(response.text) as GrammarCheckResult;
+      const result = safeJsonParse(response.text) as GrammarCheckResult;
 
       logger.info('Grammar check completed', {
         score: result.score,
@@ -340,7 +422,19 @@ Return ONLY raw JSON without any markdown formatting, code blocks, or backticks.
   </Considerations>
   <CoverLetter>${coverLetter}</CoverLetter>
   <ReturnStructure>
-Return ONLY raw JSON without any markdown formatting, code blocks, or backticks. The response must be valid JSON that can be directly parsed:
+CRITICAL: You must return ONLY raw JSON without ANY markdown formatting, code blocks, or backticks.
+DO NOT wrap the response in \`\`\`json or any other markdown.
+The response must be valid JSON that can be directly parsed by JSON.parse().
+
+Example of CORRECT format:
+{"score": 85, "issues": [], "feedback": "Good style overall."}
+
+Example of INCORRECT format:
+\`\`\`json
+{"score": 85, "issues": [], "feedback": "Good style overall."}
+\`\`\`
+
+Your response must follow this structure:
 {
   "score": <number between 0-100 representing style quality>,
   "issues": [
@@ -362,7 +456,7 @@ Return ONLY raw JSON without any markdown formatting, code blocks, or backticks.
       });
 
       // Parse the response
-      const result = JSON.parse(response.text) as StyleCheckResult;
+      const result = safeJsonParse(response.text) as StyleCheckResult;
 
       logger.info('Style check completed', {
         score: result.score,
@@ -408,7 +502,19 @@ Return ONLY raw JSON without any markdown formatting, code blocks, or backticks.
     <CandidateExperience>${options.candidateExperience}</CandidateExperience>
   </JobDetails>
   <ReturnStructure>
-Return ONLY raw JSON without any markdown formatting, code blocks, or backticks. The response must be valid JSON that can be directly parsed:
+CRITICAL: You must return ONLY raw JSON without ANY markdown formatting, code blocks, or backticks.
+DO NOT wrap the response in \`\`\`json or any other markdown.
+The response must be valid JSON that can be directly parsed by JSON.parse().
+
+Example of CORRECT format:
+{"score": 85, "strengths": ["Good match for skills"], "weaknesses": [], "missingKeywords": [], "feedback": "Good relevance overall."}
+
+Example of INCORRECT format:
+\`\`\`json
+{"score": 85, "strengths": ["Good match for skills"], "weaknesses": [], "missingKeywords": [], "feedback": "Good relevance overall."}
+\`\`\`
+
+Your response must follow this structure:
 {
   "score": <number between 0-100 representing relevance>,
   "strengths": ["<strength 1>", "<strength 2>", ...],
@@ -426,7 +532,7 @@ Return ONLY raw JSON without any markdown formatting, code blocks, or backticks.
       });
 
       // Parse the response
-      const result = JSON.parse(response.text) as RelevanceAssessmentResult;
+      const result = safeJsonParse(response.text) as RelevanceAssessmentResult;
 
       logger.info('Relevance assessment completed', {
         score: result.score,
@@ -480,7 +586,19 @@ Return ONLY raw JSON without any markdown formatting, code blocks, or backticks.
     <Company>${options.companyName}</Company>
   </JobDetails>
   <ReturnStructure>
-Return ONLY raw JSON without any markdown formatting, code blocks, or backticks. The response must be valid JSON that can be directly parsed:
+CRITICAL: You must return ONLY raw JSON without ANY markdown formatting, code blocks, or backticks.
+DO NOT wrap the response in \`\`\`json or any other markdown.
+The response must be valid JSON that can be directly parsed by JSON.parse().
+
+Example of CORRECT format:
+{"score": 85, "missingComponents": [], "weakComponents": [], "feedback": "Complete cover letter."}
+
+Example of INCORRECT format:
+\`\`\`json
+{"score": 85, "missingComponents": [], "weakComponents": [], "feedback": "Complete cover letter."}
+\`\`\`
+
+Your response must follow this structure:
 {
   "score": <number between 0-100 representing completeness>,
   "missingComponents": ["<missing component 1>", "<missing component 2>", ...],
@@ -497,7 +615,7 @@ Return ONLY raw JSON without any markdown formatting, code blocks, or backticks.
       });
 
       // Parse the response
-      const result = JSON.parse(
+      const result = safeJsonParse(
         response.text
       ) as CompletenessVerificationResult;
 
