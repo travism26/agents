@@ -11,4 +11,4 @@ I created 3 agents cover letter is prob my favorite once does few things
 1. Creates 2 cover letters, plus if you have perplexity api key, it does research on the company and comes up with questions to ask / prep material
   - Table based cover letter
   - Regular version 3-4 paragraphs
-3. Creates questions to prep for before the interview.
+2. Creates questions to prep for before the interview.
